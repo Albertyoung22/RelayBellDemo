@@ -1473,14 +1473,26 @@ def api_audio_proxy():
     path = request.args.get('path')
     if not path: return abort(400)
     
+    # [Robustness] 修正路徑分隔符（前端發過來的可能是 \ 或 /）
+    path = path.replace('\\', os.sep).replace('/', os.sep)
+    
     # 處理 resource_path
     abs_path = resource_path(path) if not os.path.isabs(path) else path
     
+    # [Robustness] 如果找不到，試著在 APP_DIR 下找
     if not os.path.exists(abs_path):
+        basename = os.path.basename(path)
+        alt_path = os.path.join(APP_DIR, basename)
+        if os.path.exists(alt_path):
+            abs_path = alt_path
+            
+    if not os.path.exists(abs_path):
+        print(f"[AudioProxy] 找不到檔案: {abs_path}")
         return abort(404)
         
     ext = os.path.splitext(abs_path)[1].lower()
     if ext not in ('.mp3', '.wav', '.m4a', '.ogg'):
+        print(f"[AudioProxy] 禁止存取非音訊檔: {abs_path}")
         return abort(403)
         
     return send_file(abs_path)
@@ -3516,21 +3528,26 @@ def broadcast_web_audio(filename, duration=0):
                 WEB_WS_CLIENTS.remove(d)
 
 def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
+    print(f"[Speaker] 模擬播放: {filename}")
     try:
         # 計算時長
         if not duration_estimate or duration_estimate <= 0:
             try:
                 if filename.lower().endswith(".mp3"):
-                    from mutagen.mp3 import MP3
-                    duration_estimate = MP3(filename).info.length
+                    # 如果有安裝 mutagen 則精確獲取
+                    try:
+                        from mutagen.mp3 import MP3
+                        duration_estimate = MP3(filename).info.length
+                    except ImportError:
+                        duration_estimate = 2.5 # 提示音通常不長
                 elif filename.lower().endswith(".wav"):
                     import wave
                     with wave.open(filename, 'rb') as wf:
                         duration_estimate = wf.getnframes() / float(wf.getframerate())
                 else:
-                    duration_estimate = 5
+                    duration_estimate = 2.0
             except:
-                duration_estimate = 5
+                duration_estimate = 2.0
         
         # 廣播到前端
         broadcast_web_audio(filename, duration_estimate)
@@ -3548,6 +3565,7 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
             ui_safe(_set_progress, percent); STATE["progress"] = percent
             
         ui_safe(_set_progress, 100); STATE["progress"] = 100
+        print(f"[Speaker] 模擬完成: {filename}")
     except Exception as e:
         print(f"[RedirAudio] Play error: {e}")
 
@@ -4632,10 +4650,14 @@ async def speak_text_async(text, force_chime_off=False):
                 if os.path.exists(wav_path) and os.path.getsize(wav_path) > 0:
                      ui_safe(set_playing_status, f"🔊 MeloTTS 播放中...")
                      try:
-                        if should_chime and os.path.exists(START_SOUND):
+                        if should_chime and START_SOUND and os.path.isfile(START_SOUND):
+                            print(f"[Chime] Playing start: {START_SOUND}")
                             play_fx(START_SOUND, ignore_interrupt=True)
-                            time.sleep(0.5) 
-                     except: pass
+                            time.sleep(0.5)
+                        else:
+                            print(f"[Chime] Skipping start. should_chime={should_chime}, file_ok={os.path.isfile(START_SOUND) if START_SOUND else 'None'}")
+                     except Exception as ce:
+                        print(f"[Chime] Play error: {ce}")
                      
                      play_sound(wav_path)
                      try: os.remove(wav_path)
@@ -4668,8 +4690,10 @@ async def speak_text_async(text, force_chime_off=False):
                     text_area_insert(f"❌ Piper 合成失敗（force）：{log}", "TTS")
                 else:
                     # [Chime] Piper Force
-                    if should_chime and os.path.exists(START_SOUND):
+                    if should_chime and START_SOUND and os.path.isfile(START_SOUND):
+                         print(f"[Chime] Playing start (Azure): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
+                         time.sleep(0.5)
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
@@ -4717,8 +4741,10 @@ async def speak_text_async(text, force_chime_off=False):
 
                 if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                     # [Chime] Azure
-                    if should_chime and os.path.exists(START_SOUND):
+                    if should_chime and START_SOUND and os.path.isfile(START_SOUND):
+                         print(f"[Chime] Playing start (Azure): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
+                         time.sleep(0.5)
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
@@ -4790,8 +4816,10 @@ async def speak_text_async(text, force_chime_off=False):
                         return
 
                     # [Chime] EdgeTTS
-                    if should_chime and os.path.exists(START_SOUND):
+                    if should_chime and START_SOUND and os.path.isfile(START_SOUND):
+                         print(f"[Chime] Playing start (Azure): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
+                         time.sleep(0.5)
                     play_sound(mp3_path)
                     try: os.remove(mp3_path)
                     except Exception: pass
@@ -4892,8 +4920,10 @@ async def speak_text_async(text, force_chime_off=False):
             if not (stop_playback_event.is_set() or voice_muted):
 
                 # [Chime] gTTS
-                if should_chime and os.path.exists(START_SOUND):
+                if should_chime and START_SOUND and os.path.isfile(START_SOUND):
+                     print(f"[Chime] Playing start (gTTS): {START_SOUND}")
                      play_fx(START_SOUND, ignore_interrupt=True)
+                     time.sleep(0.5)
                 play_sound(tmp)
 
             try:
@@ -4952,8 +4982,10 @@ async def speak_text_async(text, force_chime_off=False):
                         except: pass
                         return
                     # [Chime] Piper Fallback
-                    if should_chime and os.path.exists(START_SOUND):
+                    if should_chime and START_SOUND and os.path.isfile(START_SOUND):
+                         print(f"[Chime] Playing start (Azure): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
+                         time.sleep(0.5)
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
