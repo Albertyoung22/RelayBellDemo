@@ -8,6 +8,13 @@ app.secret_key = secrets.token_hex(16)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 UI_DIR = os.path.join(ROOT, 'static', 'ui')
 
+# 語言代碼轉換 (修正 deep-translator 錯誤)
+# index.html 傳入 'zh'，但 GoogleTranslator 需要 'zh-TW'
+LANG_CODE_FIX = {
+    'zh': 'zh-TW',
+    'nan': 'zh-TW', # 台語翻譯暫時導向中文
+}
+
 # --- 核心導覽 ---
 
 @app.route('/')
@@ -39,7 +46,6 @@ def serve_ui(filename):
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
-    # 先在 UI 目錄找，找不到再去根目錄，這裏簡單處理
     for d in [UI_DIR, ROOT]:
         p = os.path.join(d, filename)
         if os.path.exists(p):
@@ -73,13 +79,13 @@ def fake_get_apis():
 
 @app.route('/taigi/translate', methods=['POST'])
 def taigi_trans():
+    # 模擬台語翻譯
     d = request.json or {}
     text = d.get('text', '')
     return jsonify(ok=True, text="[台語模擬] " + text)
 
 @app.route('/taigi/say', methods=['POST'])
 def taigi_say():
-    # 模擬台語播放，回傳一個展示用的連結
     return jsonify(ok=True, file="demo_taigi.mp3", url="/api/tts_preview")
 
 @app.route('/sendmp3', methods=['POST'])
@@ -110,10 +116,18 @@ def translate():
         text = d.get('text')
         target = d.get('target', 'zh-TW')
         source = d.get('source', 'auto')
+        
+        # 修正語言代碼相容性
+        target_fixed = LANG_CODE_FIX.get(target, target)
+        source_fixed = LANG_CODE_FIX.get(source, source)
+        
         if not text: return jsonify(ok=False, error="No text"), 400
-        t = GoogleTranslator(source=source, target=target).translate(text)
+        
+        t = GoogleTranslator(source=source_fixed, target=target_fixed).translate(text)
         return jsonify(ok=True, translated=t, translatedText=t)
-    except Exception as e: return jsonify(ok=False, error=str(e)), 500
+    except Exception as e: 
+        print(f"[ERROR] Translate failed: {e}")
+        return jsonify(ok=False, error=str(e)), 500
 
 @app.route('/api/tts_preview', methods=['POST'])
 def tts():
@@ -122,13 +136,14 @@ def tts():
         d = request.json or {}
         text = d.get('text', '這是測試語音')
         lang = d.get('lang', 'zh-TW-HsiaoChenNeural')
+        
         lang_map = {
             'zh': 'zh-TW-HsiaoChenNeural', 'zh-TW': 'zh-TW-HsiaoChenNeural',
             'en': 'en-US-AriaNeural', 'en-US': 'en-US-AriaNeural',
             'ja': 'ja-JP-NanamiNeural', 'ko': 'ko-KR-SunHiNeural',
             'nan': 'zh-TW-YunJheNeural', 'nan-TW': 'zh-TW-YunJheNeural'
         }
-        voice = lang if "-Neural" in str(lang) else lang_map.get(lang, "zh-TW-HsiaoChenNeural")
+        voice = lang if "-Neural" in str(lang) else lang_map.get(lang.split('-')[0], "zh-TW-HsiaoChenNeural")
         
         async def _gen():
             tts = edge_tts.Communicate(text, voice)
@@ -136,6 +151,7 @@ def tts():
             async for c in tts.stream():
                 if c["type"] == "audio": o.write(c["data"])
             o.seek(0); return o
+            
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
