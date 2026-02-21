@@ -318,9 +318,13 @@ mimetypes.add_type('application/json', '.json')
 
 from pathlib import Path
 
-from tkinter import filedialog, messagebox, simpledialog
+if not DISABLE_GUI:
+    from tkinter import filedialog, messagebox, simpledialog
+    from tkinter.scrolledtext import ScrolledText
+else:
+    # Mocks for headless mode
+    filedialog = messagebox = simpledialog = ScrolledText = None
 
-from tkinter.scrolledtext import ScrolledText
 
 from functools import wraps
 
