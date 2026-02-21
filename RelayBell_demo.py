@@ -73,7 +73,13 @@ DISABLE_WEB = False         # True 時不啟動 Flask + ngrok（純本機）
 
 # ---- 隱性匯入（方便 PyInstaller）----
 
-import serial, serial.tools.list_ports, serial.win32, serial.serialwin32  # noqa: F401
+import sys as _sys
+import serial, serial.tools.list_ports  # noqa: F401
+if _sys.platform == "win32":
+    try:
+        import serial.win32, serial.serialwin32  # noqa: F401
+    except ImportError:
+        pass
 try:
     import ollama
     HAS_OLLAMA = True
@@ -272,10 +278,98 @@ _log_boot(f"[SETUP] ssl.get_default_verify_paths() = {ssl.get_default_verify_pat
 
 
 
-import socket, tkinter as tk, tkinter.ttk as ttk, csv, queue, time
+# ---- Tkinter（GUI 環境才需要）----
+# Render / Linux 無頭模式下 tkinter 不一定存在，使用 try/except 保護
+_HAS_TKINTER = False
+try:
+    import socket, tkinter as tk, tkinter.ttk as ttk
+    from tkinter import filedialog, messagebox, simpledialog
+    from tkinter.scrolledtext import ScrolledText
+    _HAS_TKINTER = True
+except Exception:
+    # --- tkinter Stub：讓後面的模組層級程式碼不會 NameError ---
+    import types as _types, socket
+    tk = _types.ModuleType("tk")
+    ttk = _types.ModuleType("ttk")
+    class _W:
+        def __init__(self, *a, **kw): pass
+        def __call__(self, *a, **kw): return self
+        def __getattr__(self, n): return self
+        def config(self, **kw): pass
+        def grid(self, **kw): pass
+        def pack(self, **kw): pass
+        def place(self, **kw): pass
+        def after(self, *a, **kw): pass
+        def mainloop(self): pass
+        def destroy(self): pass
+        def protocol(self, *a, **kw): pass
+        def title(self, *a): pass
+        def iconphoto(self, *a): pass
+        def wm_iconbitmap(self, *a): pass
+        def geometry(self, *a): pass
+        def resizable(self, *a): pass
+        def quit(self): pass
+        def insert(self, *a, **kw): pass
+        def delete(self, *a, **kw): pass
+        def get(self, *a, **kw): return ""
+        def set(self, *a, **kw): pass
+        def see(self, *a): pass
+        def configure(self, **kw): pass
+        def bind(self, *a, **kw): pass
+        def unbind(self, *a): pass
+        def winfo_width(self): return 0
+        def winfo_height(self): return 0
+        def lift(self): pass
+        def focus_set(self): pass
+        def state(self, *a): return "normal"
+        def __iter__(self): return iter([])
+    for _n in ("Tk","Frame","LabelFrame","Label","Button","Entry","Text",
+               "Checkbutton","OptionMenu","Scale","Scrollbar","Canvas",
+               "Toplevel","Menu","Menubutton","Spinbox","PanedWindow",
+               "PhotoImage","StringVar","IntVar","BooleanVar","DoubleVar",
+               "END","WORD","DISABLED","NORMAL","HORIZONTAL","VERTICAL",
+               "NW","N","NE","W","CENTER","E","SW","S","SE",
+               "LEFT","RIGHT","TOP","BOTTOM","BOTH","X","Y","NONE",
+               "INSERT","SEL","SEL_FIRST","SEL_LAST"):
+        setattr(tk, _n, _W if isinstance(_W, type) else _n)
+    tk.END = "end"; tk.WORD = "word"; tk.DISABLED = "disabled"
+    tk.NORMAL = "normal"; tk.HORIZONTAL = "horizontal"
+    tk.VERTICAL = "vertical"; tk.BOTH = "both"; tk.X = "x"; tk.Y = "y"
+    tk.LEFT = "left"; tk.RIGHT = "right"; tk.TOP = "top"; tk.BOTTOM = "bottom"
+    tk.INSERT = "insert"; tk.NW = "nw"; tk.CENTER = "center"; tk.NONE = "none"
+    for _n in ("Notebook","Combobox","Progressbar","Treeview","Separator",
+               "Style","Frame","Label","Button","Entry","Scale","Scrollbar"):
+        setattr(ttk, _n, _W)
+    # filedialog / messagebox / simpledialog stubs
+    class _FD:
+        @staticmethod
+        def askopenfilename(**kw): return ""
+        @staticmethod
+        def asksaveasfilename(**kw): return ""
+        @staticmethod
+        def askdirectory(**kw): return ""
+    class _MB:
+        @staticmethod
+        def showinfo(*a, **kw): pass
+        @staticmethod
+        def showwarning(*a, **kw): pass
+        @staticmethod
+        def showerror(*a, **kw): pass
+        @staticmethod
+        def askyesno(*a, **kw): return False
+        @staticmethod
+        def askokcancel(*a, **kw): return False
+    class _SD:
+        @staticmethod
+        def askstring(*a, **kw): return ""
+        @staticmethod
+        def askinteger(*a, **kw): return 0
+    filedialog = _FD; messagebox = _MB; simpledialog = _SD
+    ScrolledText = _W
+    print("[WARN] tkinter not available – running in headless / web-only mode")
 
+import csv, queue, time
 import tempfile, asyncio, requests, uuid, re, subprocess, ctypes, webbrowser, shutil, atexit, signal, glob
-
 import secrets, hashlib
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -299,15 +393,65 @@ mimetypes.add_type('application/json', '.json')
 
 from pathlib import Path
 
-from tkinter import filedialog, messagebox, simpledialog
-
-from tkinter.scrolledtext import ScrolledText
-
 from functools import wraps
 
 from urllib.parse import quote
 
-import pygame
+try:
+    import pygame
+    _HAS_PYGAME = True
+except ImportError:
+    # pygame 不可用（如 Render/Linux 無頭模式）
+    # 音訊已重導向至前端，這裡只需要一個 stub 讓程式不崩潰
+    import types as _ptypes
+    pygame = _ptypes.ModuleType("pygame")
+    class _PMixer:
+        class music:
+            @staticmethod
+            def set_volume(v): pass
+            @staticmethod
+            def stop(): pass
+            @staticmethod
+            def load(f): pass
+            @staticmethod
+            def play(): pass
+            @staticmethod
+            def pause(): pass
+            @staticmethod
+            def unpause(): pass
+            @staticmethod
+            def unload(): pass
+            @staticmethod
+            def get_busy(): return False
+        class Channel:
+            def __init__(self, *a): pass
+            def play(self, *a): pass
+            def stop(self): pass
+            def get_busy(self): return False
+        class Sound:
+            def __init__(self, *a): pass
+            def set_volume(self, v): pass
+        @staticmethod
+        def quit(): pass
+        @staticmethod
+        def init(): pass
+        @staticmethod
+        def pre_init(*a): pass
+        @staticmethod
+        def set_num_channels(n): pass
+    pygame.mixer = _PMixer()
+    pygame.mixer.Channel = _PMixer.Channel
+    pygame.mixer.Sound = _PMixer.Sound
+
+    class _PDisplay:
+        @staticmethod
+        def set_mode(*a, **kw): pass
+
+    pygame.display = _PDisplay()
+    pygame.error = Exception
+    pygame.NOFRAME = 0
+    _HAS_PYGAME = False
+    print("[WARN] pygame not available – audio redirected to frontend WebSocket only")
 
 import yt_dlp
 
