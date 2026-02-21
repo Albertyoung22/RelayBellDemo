@@ -1,89 +1,107 @@
 # -*- coding: utf-8 -*-
-import os
-import secrets
-import asyncio
-import io
-from flask import Flask, request, jsonify, render_template, send_file, redirect, send_from_directory
-import edge_tts
-from deep_translator import GoogleTranslator
+import os, secrets, asyncio, io
+from flask import Flask, request, jsonify, send_file, redirect, send_from_directory
 
-# 自動偵測正確的基底路徑
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
-UI_DIR = os.path.join(STATIC_DIR, 'ui')
-
-app = Flask(__name__, static_folder=STATIC_DIR)
+app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 
-# 語音對照表
-VOICE_ID_TABLE = {
-    "zh-TW": {"female": "zh-TW-HsiaoChenNeural", "male": "zh-TW-YunJheNeural"},
-    "en-US": {"female": "en-US-AriaNeural", "male": "en-US-GuyNeural"},
-    "ja-JP": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
-    "ko-KR": {"female": "ko-KR-SunHiNeural", "male": "ko-KR-InJoonNeural"},
-}
+# 自動偵測絕對路徑
+ROOT = os.path.dirname(os.path.abspath(__file__))
+UI_DIR = os.path.join(ROOT, 'static', 'ui')
 
-# --- 路由 ---
+# --- 核心導覽 ---
 
 @app.route('/')
-def index():
-    # 強制檢查檔案是否存在並導向
-    return redirect("/static/ui/index.html")
+def home():
+    # 預設進入展示專區
+    return redirect("/demo")
 
-# 解決 Render 上 static/ui 路徑遺失的問題
+@app.route('/demo')
+def demo():
+    # 直接抓取展示專用的 demo.html
+    return send_from_directory(UI_DIR, 'demo.html')
+
+# 讓 /login 變成一個自動植入登入憑證的頁面
+@app.route('/login')
+def login_page():
+    return f'''
+    <html><body style="font-family:sans-serif; text-align:center; padding-top:100px; background:#f0f2f5;">
+    <div style="background:white; display:inline-block; padding:40px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+        <h2 style="color:#333;">RelayBell 展示模式</h2>
+        <p style="color:#666;">點擊下方按鈕即可繞過密碼檢查</p>
+        <button onclick="localStorage.setItem('X_TOKEN', 'demo-token'); location.href='/static/ui/index.html';" 
+        style="padding:15px 30px; font-size:18px; background:#1e7bd8; color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold;">
+        🚀 一鍵登入並進入主控台
+        </button>
+        <div style="margin-top:25px;"><a href="/demo" style="color:#7c4dff; text-decoration:none;">或是直接前往 AI 展示廳 ✨</a></div>
+    </div>
+    </body></html>
+    '''
+
+# 劫持所有 /static/ui/ 檔案，解決路徑問題
 @app.route('/static/ui/<path:filename>')
 def serve_ui(filename):
     return send_from_directory(UI_DIR, filename)
 
-@app.route('/demo')
-def demo_page():
-    # 直接在 ui 目錄尋找 demo.html
-    return send_from_directory(UI_DIR, 'demo.html')
+# --- 模擬原本系統 API (預防 index.html 出現錯誤彈窗) ---
+
+@app.route('/state')
+def state():
+    return jsonify({
+        "playing": "Demo Live", 
+        "progress": 0, 
+        "volume": 80,
+        "muted": False,
+        "lang": "zh-TW", 
+        "gender": "female",
+        "rate": "0%",
+        "edge_tts_status": "OK",
+        "ngrok_url": "Showcase Mode"
+    })
+
+@app.route('/timetable')
+@app.route('/files')
+def fake_api():
+    return jsonify(ok=True, files=[], data={"items":[]})
+
+# --- AI 展示專用 API ---
 
 @app.route('/api/translate', methods=['POST'])
-def api_translate():
+def translate():
+    from deep_translator import GoogleTranslator
     try:
-        data = request.json or request.form
-        text = data.get('text')
-        target = data.get('target', 'zh-TW')
-        source = data.get('source', 'auto')
-        if not text: return jsonify(ok=False, error="Missing text"), 400
-        translated = GoogleTranslator(source=source, target=target).translate(text)
-        return jsonify(ok=True, translated=translated)
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
+        d = request.json or {}
+        # 自動偵測來源並翻譯為目標語言
+        t = GoogleTranslator(source='auto', target=d.get('target', 'zh-TW')).translate(d.get('text', ''))
+        return jsonify(ok=True, translated=t)
+    except Exception as e: return jsonify(ok=False, error=str(e)), 500
 
 @app.route('/api/tts_preview', methods=['POST'])
-def api_tts_preview():
+def tts():
+    import edge_tts
     try:
-        data = request.json or {}
-        text = data.get('text')
-        lang = data.get('lang')
-        gender = data.get('gender', 'female')
-        if not text: return jsonify(ok=False, error="No text"), 400
-        
-        # 決定聲音 ID (支援直接 ID 或語言代碼轉換)
-        voice = lang if "-Neural" in str(lang) else VOICE_ID_TABLE.get(lang, VOICE_ID_TABLE["zh-TW"]).get(gender, "zh-TW-HsiaoChenNeural")
+        d = request.json or {}
+        text = d.get('text', '')
+        voice = d.get('lang', 'zh-TW-HsiaoChenNeural')
         
         async def _gen():
-            communicate = edge_tts.Communicate(text, voice)
-            audio_data = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio": audio_data += chunk["data"]
-            return audio_data
-
+            tts = edge_tts.Communicate(text, voice)
+            o = io.BytesIO()
+            async for c in tts.stream():
+                if c["type"] == "audio": o.write(c["data"])
+            o.seek(0); return o
+            
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            audio_bytes = loop.run_until_complete(_gen())
+            audio_io = loop.run_until_complete(_gen())
         finally:
             loop.close()
             
-        return send_file(io.BytesIO(audio_bytes), mimetype="audio/mpeg", download_name="preview.mp3")
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
+        return send_file(audio_io, mimetype="audio/mpeg")
+    except Exception as e: return jsonify(ok=False, error=str(e)), 500
 
 if __name__ == "__main__":
-    # Render 會給 PORT 環境變數，沒給則預設 10000
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    # Render 會抓取 PORT 環境變數（通常是 10000）
+    p = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=p)
