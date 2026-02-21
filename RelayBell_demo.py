@@ -284,7 +284,14 @@ _log_boot(f"[SETUP] ssl.get_default_verify_paths() = {ssl.get_default_verify_pat
 
 
 
-import socket, tkinter as tk, tkinter.ttk as ttk, csv, queue, time
+import socket, csv, queue, time
+if not DISABLE_GUI:
+    import tkinter as tk, tkinter.ttk as ttk
+else:
+    # Minimal mock for DISABLE_GUI mode to prevent NameErrors
+    tk = None
+    ttk = None
+
 
 import tempfile, asyncio, requests, uuid, re, subprocess, ctypes, webbrowser, shutil, atexit, signal, glob
 
