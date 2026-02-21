@@ -293,9 +293,10 @@ except Exception:
     ttk = _types.ModuleType("ttk")
     class _W:
         def __init__(self, *a, **kw): pass
-        def __call__(self, *a, **kw): return self
-        def __getattr__(self, n): return self
-        def config(self, **kw): pass
+        def __call__(self, *a, **kw): return _W()
+        def __getattr__(self, n): return _W()
+        def config(self, *a, **kw): pass
+        def configure(self, *a, **kw): pass
         def grid(self, **kw): pass
         def pack(self, **kw): pass
         def place(self, **kw): pass
@@ -314,7 +315,6 @@ except Exception:
         def get(self, *a, **kw): return ""
         def set(self, *a, **kw): pass
         def see(self, *a): pass
-        def configure(self, **kw): pass
         def bind(self, *a, **kw): pass
         def unbind(self, *a): pass
         def winfo_width(self): return 0
@@ -322,7 +322,18 @@ except Exception:
         def lift(self): pass
         def focus_set(self): pass
         def state(self, *a): return "normal"
+        def tab(self, *a, **kw): pass
+        def add(self, *a, **kw): pass
+        def select(self, *a, **kw): pass
+        def index(self, *a, **kw): return 0
+        def cget(self, *a): return ""
+        def rowconfigure(self, *a, **kw): pass
+        def columnconfigure(self, *a, **kw): pass
+        def winfo_exists(self): return False
+        def getsource(self, *a): return ""
         def __iter__(self): return iter([])
+        def __len__(self): return 0
+        def __bool__(self): return True
     for _n in ("Tk","Frame","LabelFrame","Label","Button","Entry","Text",
                "Checkbutton","OptionMenu","Scale","Scrollbar","Canvas",
                "Toplevel","Menu","Menubutton","Spinbox","PanedWindow",
@@ -13347,7 +13358,55 @@ THEME = {
 
 }
 
+# ====================================================
+# == [ANCHOR] HEADLESS MODE (Render / 無桌面環境) ==
+# ====================================================
+if not _HAS_TKINTER:
+    # 無 tkinter：直接啟動所有後台服務並阻塞（不建構 GUI）
+    print("[HEADLESS] No tkinter – starting web-only mode")
 
+    # 定義一個空的 root 替代物（除了 after() 之外幾乎都不需要）
+    class _FakeRoot:
+        def after(self, *a, **kw): pass
+        def mainloop(self): pass
+        def destroy(self): pass
+        def protocol(self, *a, **kw): pass
+        def quit(self): pass
+        def title(self, *a): pass
+        def geometry(self, *a): pass
+        def configure(self, *a, **kw): pass
+        def wm_iconbitmap(self, *a): pass
+        def iconphoto(self, *a): pass
+    root = _FakeRoot()
+
+    # 啟動所有背景執行緒
+    threading.Thread(target=speech_worker, daemon=True).start()
+    threading.Thread(target=youtube_worker, daemon=True).start()
+    threading.Thread(target=mp3_worker, daemon=True).start()
+    if '_cwa_bg_loop' in globals():
+        threading.Thread(target=_cwa_bg_loop, daemon=True).start()
+    if 'timetable_scheduler_loop' in globals():
+        threading.Thread(target=timetable_scheduler_loop, daemon=True).start()
+    if 'schedules_scheduler_loop' in globals():
+        threading.Thread(target=schedules_scheduler_loop, daemon=True).start()
+    if not DISABLE_UDP:
+        threading.Thread(target=udp_listener, daemon=True).start()
+    if 'student_udp_listener' in globals():
+        threading.Thread(target=student_udp_listener, daemon=True).start()
+
+    # 啟動 Flask Web Server（前台阻塞）
+    print(f"[HEADLESS] Starting Flask on 0.0.0.0:{HTTP_PORT}")
+    try:
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", HTTP_PORT)),
+                threaded=True, use_reloader=False)
+    except Exception as e:
+        print(f"[HEADLESS] Flask error: {e}")
+    import sys as _sys_exit
+    _sys_exit.exit(0)
+
+# ====================================================
+# == [ANCHOR] GUI MODE (Windows 桌面環境) ==
+# ====================================================
 
 root = tk.Tk()
 
