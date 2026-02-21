@@ -1,0 +1,6 @@
+{
+  "start_sound": "beforemic.mp3",
+  "end_sound": "beforemic2.mp3",
+  "mute_sound": "mute.mp3",
+  "use_ai_generation": true
+}
