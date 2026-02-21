@@ -58,6 +58,12 @@ USE_AI_GENERATION = not IS_RENDER    # 是否啟用 AI 廣播稿生成 (雲端�
 
 HTTP_PORT = int(os.environ.get("PORT", 5050)) # Render 使用環境變數 PORT
 
+# [Headless] Force dummy audio driver to avoid ALSA errors
+if DISABLE_GUI:
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+    print("[audio] Headless mode detected. Using SDL dummy audio driver.")
+
+
 PORT = 8888                 # UDP 監聽埠
 
 YT_AUTO_CLOSE_MIN = 30      # 全螢幕逾時自關閉（分鐘）←保留欄位
