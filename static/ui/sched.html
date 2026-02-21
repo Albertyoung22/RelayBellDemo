@@ -554,7 +554,7 @@
       // ===== API BASE =====
       // If running on file:// or not on port 5000, assume backend is at http://localhost:5000
       // You can change this default if your backend runs elsewhere.
-      const API_BASE = (location.protocol === 'file:' || location.port !== '5050')
+      const API_BASE = (location.protocol === 'file:')
         ? 'http://localhost:5050'
         : '';
 

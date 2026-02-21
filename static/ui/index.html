@@ -2095,12 +2095,22 @@
   <audio id="web-audio-player" style="display:none;"></audio>
   <script>
     (function () {
+      const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
       let ws;
       const player = document.getElementById('web-audio-player');
       const status = document.getElementById('audio-receiver-status');
       function connect() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${protocol}//${window.location.host}/ws/web`);
+        let wsUrl;
+        if (API_BASE && API_BASE.startsWith('http')) {
+          const u = new URL(API_BASE);
+          const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+          wsUrl = `${proto}//${u.host}/ws/web`;
+        } else {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          wsUrl = `${protocol}//${window.location.host}/ws/web`;
+        }
+        console.log("[AudioWS] Connecting to:", wsUrl);
+        ws = new WebSocket(wsUrl);
         ws.onopen = () => {
           status.textContent = "Audio Receiver: ON";
           status.style.color = "rgba(0, 150, 0, 0.7)";
@@ -2110,14 +2120,18 @@
         function processQueue() {
           if (isPlaying || audioQueue.length === 0) return;
           isPlaying = true;
-          const url = audioQueue.shift();
+          let url = audioQueue.shift();
+          // Prefix with API_BASE if relative
+          if (url.startsWith('/') && API_BASE) {
+            url = API_BASE + url;
+          }
           console.log("Processing audio queue, playing:", url);
 
           player.onended = () => {
             console.log("Audio finished:", url);
             isPlaying = false;
             player.onended = null;
-            processQueue();
+            setTimeout(processQueue, 100);
           };
 
           player.src = url;
@@ -2130,8 +2144,10 @@
               btn.id = 'play-gesture-btn';
               btn.textContent = "點擊以啟用音訊接收";
               btn.style = "position:fixed; top:20px; right:20px; z-index:10000; padding:10px; background:#1e7bd8; color:white; border:none; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.3); font-weight:bold;";
-              btn.onclick = () => { player.play(); btn.remove(); processQueue(); };
+              btn.onclick = () => { player.play().catch(e => { }); btn.remove(); processQueue(); };
               document.body.appendChild(btn);
+            } else {
+              setTimeout(processQueue, 1000);
             }
           });
         }
@@ -2158,9 +2174,12 @@
         ws.onclose = () => {
           status.textContent = "Audio Receiver: DISCONNECTED";
           status.style.color = "red";
-          setTimeout(connect, 3000);
+          setTimeout(connect, 5000);
         };
-        ws.onerror = () => ws.close();
+        ws.onerror = (err) => {
+          console.error("[AudioWS] Error:", err);
+          ws.close();
+        };
       }
       connect();
     })();

@@ -1475,13 +1475,24 @@
 
     <script>
         (function () {
+            const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
             let ws;
             const player = document.getElementById('web-audio-player');
             const status = document.getElementById('audio-receiver-status');
 
             function connect() {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                ws = new WebSocket(`${protocol}//${window.location.host}/ws/web`);
+                let wsUrl;
+                if (API_BASE && API_BASE.startsWith('http')) {
+                    const u = new URL(API_BASE);
+                    const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${proto}//${u.host}/ws/web`;
+                } else {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${protocol}//${window.location.host}/ws/web`;
+                }
+
+                console.log("[AudioWS] Connecting to:", wsUrl);
+                ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => {
                     status.textContent = "Audio Receiver: ON";
@@ -1494,18 +1505,23 @@
 
                 function processQueue() {
                     if (isPlaying || audioQueue.length === 0) {
-                        console.log("[AudioWS] Queue idle or busy. isPlaying:", isPlaying, "Length:", audioQueue.length);
                         return;
                     }
                     isPlaying = true;
-                    const url = audioQueue.shift();
+                    let url = audioQueue.shift();
+
+                    // Prefix with API_BASE if relative
+                    if (url.startsWith('/') && API_BASE) {
+                        url = API_BASE + url;
+                    }
+
                     console.log("[AudioWS] Starting playback of:", url);
 
                     player.onended = () => {
                         console.log("[AudioWS] Finished playing:", url);
                         isPlaying = false;
                         player.onended = null;
-                        processQueue();
+                        setTimeout(processQueue, 100);
                     };
 
                     player.src = url;
@@ -1520,15 +1536,14 @@
                             btn.textContent = "點擊以啟用音訊接收";
                             btn.style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10000; padding:20px; background:red; color:white; border-radius:10px; font-weight:bold;";
                             btn.onclick = () => {
-                                player.play();
+                                player.play().catch(e => { });
                                 btn.remove();
                                 processQueue();
                             };
                             document.body.appendChild(btn);
                         } else {
-                            // If button already exists, wait for user to click it
-                            // but we might want to try next one after a delay
-                            setTimeout(processQueue, 2000);
+                            // Skip this one if failed and try next
+                            setTimeout(processQueue, 1000);
                         }
                     });
                 }
@@ -1551,18 +1566,16 @@
                             player.pause();
                         } else if (data.type === 'resume_audio') {
                             console.log("[AudioWS] Received Resume Command");
-                            player.play().catch(e => console.warn(e));
+                            player.play().catch(e => { });
                         }
-                    } catch (err) {
-                        console.error("[AudioWS] Message error:", err);
-                    }
+                    } catch (err) { }
                 };
 
                 ws.onclose = () => {
                     status.textContent = "Audio Receiver: DISCONNECTED";
-                    status.style.color = "rgba(255, 0, 0, 0.7)";
-                    console.log("[AudioWS] Disconnected, retrying...");
-                    setTimeout(connect, 3000);
+                    status.style.color = "red";
+                    console.warn("[AudioWS] Disconnected. Retrying in 5s...");
+                    setTimeout(connect, 5000);
                 };
 
                 ws.onerror = (err) => {

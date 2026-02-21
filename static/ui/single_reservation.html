@@ -228,7 +228,7 @@
             <a href="live.html">🔴 直播</a>
             <a href="teacher_call.html" target="_blank">📹 通話</a>
             <a href="shortcuts.html">⚡ 快捷</a>
-      <a href="buddha.html">🕌 佛教</a>
+            <a href="buddha.html">🕌 佛教</a>
             <span class="sep">|</span>
             <a href="clients.html" target="_blank">👥 設備</a>
             <a href="/teacher?key=teacher" target="_blank">🎵 媒體</a>
@@ -339,7 +339,7 @@
     <script>
         (() => {
             const $ = (sel) => document.querySelector(sel);
-            const API_BASE = (location.protocol === 'file:' || location.port !== '5050') ? 'http://localhost:5050' : '';
+            const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
             const apiFetch = (path, opts) => fetch(API_BASE + path, opts);
 
             // 初始化日期為今天

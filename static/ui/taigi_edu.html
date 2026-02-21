@@ -250,7 +250,7 @@
     </main>
 
     <script>
-        const API_BASE = (location.port !== '5050' && location.port !== "") ? 'http://localhost:5050' : '';
+        const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
 
         const $ = (id) => document.getElementById(id);
 

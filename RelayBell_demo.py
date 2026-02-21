@@ -3501,12 +3501,15 @@ def broadcast_web_audio(filename, duration=0):
     """
     廣播音訊播放給所有 Web 用戶
     """
+    print(f"[WebAudio] Broadcasting: {filename} ({duration}s)")
     # 轉換成可存取的 URL
-    # 優先考慮本機相對路徑的處理
-    base_name = os.path.basename(filename)
+    if filename.startswith("http"):
+        url = filename
+    else:
+        # 建構 API URL
+        url = f"/api/audio_proxy?path={quote(filename)}"
     
-    # 建構 API URL
-    url = f"/api/audio_proxy?path={quote(filename)}"
+    base_name = os.path.basename(filename)
     
     msg = json.dumps({
         "type": "play_audio",
@@ -3936,8 +3939,18 @@ def _really_play_mp3_file(path):
     
 
     try:
+        # [Chime] Lead-in
+        if CHIME_ENABLED and START_SOUND and os.path.isfile(START_SOUND):
+            print(f"[Chime] Playing start (MP3): {START_SOUND}")
+            play_fx(START_SOUND, ignore_interrupt=True)
+            time.sleep(0.5)
 
         play_sound(mp3_path, duration_estimate=10)
+
+        # [Chime] Lead-out
+        if CHIME_ENABLED and END_SOUND and os.path.isfile(END_SOUND) and not stop_playback_event.is_set():
+             print(f"[Chime] Playing end (MP3): {END_SOUND}")
+             play_sound(END_SOUND, ignore_interrupt=True)
 
     except Exception as e:
 
@@ -8628,6 +8641,10 @@ def api_cmd():
             if action in ("set_media", "sync_play"):
 
                 st["url"]  = cmd["payload"].get("url","")
+                url = st["url"]
+                if url:
+                    # [Broadcast] Also redirect to web clients
+                    threading.Thread(target=broadcast_web_audio, args=(url,), daemon=True).start()
 
                 st["type"] = cmd["payload"].get("type","video")
 

@@ -611,6 +611,7 @@
         .vibrant-gradient-text {
             background: linear-gradient(135deg, #4f46e5, #ec4899);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
     </style>
@@ -923,7 +924,7 @@
 
     <audio id="preview-player" style="display:none"></audio>
     <script>
-        const API_BASE = (location.port === '5050' || location.port === '5000') ? '' : 'http://localhost:5050';
+        const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
 
         const PRESETS = {
             'zh_opening': { text: '各位貴賓您好，歡迎光臨。今日營業時間即將開始，祝您購物愉快。', lang: 'zh-TW' },
@@ -1273,6 +1274,109 @@
         }
 
         setInterval(updateNextSched, 15000);
+    </script>
+
+    <!-- Audio Receiver for Redirected Audio -->
+    <div id="audio-receiver-status"
+        style="position:fixed; bottom:10px; right:10px; font-size:10px; color:rgba(0,0,0,0.3); z-index:9999;">
+        Audio Receiver: OFF</div>
+    <audio id="web-audio-player" style="display:none;"></audio>
+
+    <script>
+        (function () {
+            const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
+            let ws;
+            const player = document.getElementById('web-audio-player');
+            const status = document.getElementById('audio-receiver-status');
+
+            function connect() {
+                let wsUrl;
+                if (API_BASE && API_BASE.startsWith('http')) {
+                    const u = new URL(API_BASE);
+                    const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${proto}//${u.host}/ws/web`;
+                } else {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    wsUrl = `${protocol}//${window.location.host}/ws/web`;
+                }
+
+                console.log("[AudioWS] Connecting to:", wsUrl);
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    status.textContent = "Audio Receiver: ON";
+                    status.style.color = "rgba(0, 150, 0, 0.7)";
+                };
+
+                let audioQueue = [];
+                let isPlaying = false;
+
+                function processQueue() {
+                    if (isPlaying || audioQueue.length === 0) return;
+                    isPlaying = true;
+                    let url = audioQueue.shift();
+
+                    if (url.startsWith('/') && API_BASE) {
+                        url = API_BASE + url;
+                    }
+
+                    console.log("[AudioWS] Redir playing:", url);
+
+                    player.onended = () => {
+                        isPlaying = false;
+                        player.onended = null;
+                        setTimeout(processQueue, 100);
+                    };
+
+                    player.src = url;
+                    player.play().catch(err => {
+                        console.warn("[AudioWS] Gesture needed", err);
+                        isPlaying = false;
+                        player.onended = null;
+
+                        if (!document.getElementById('play-gesture-btn')) {
+                            const btn = document.createElement('button');
+                            btn.id = 'play-gesture-btn';
+                            btn.textContent = "🔊 點擊啟用背景廣播接收";
+                            btn.style = "position:fixed; bottom:40px; right:20px; z-index:10000; padding:12px 24px; background:linear-gradient(135deg, #4f46e5, #ec4899); color:white; border:none; border-radius:15px; box-shadow:0 8px 20px rgba(0,0,0,0.2); font-weight:bold; cursor:pointer;";
+                            btn.onclick = () => {
+                                player.play().catch(e => { });
+                                btn.remove();
+                                processQueue();
+                            };
+                            document.body.appendChild(btn);
+                        } else {
+                            setTimeout(processQueue, 1000);
+                        }
+                    });
+                }
+
+                ws.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.type === 'play_audio') {
+                            audioQueue.push(data.url);
+                            processQueue();
+                        } else if (data.type === 'stop_audio') {
+                            audioQueue = [];
+                            isPlaying = false;
+                            player.pause();
+                            player.currentTime = 0;
+                        }
+                    } catch (err) { }
+                };
+
+                ws.onclose = () => {
+                    status.textContent = "Audio Receiver: OFF";
+                    status.style.color = "red";
+                    setTimeout(connect, 5000);
+                };
+
+                ws.onerror = () => ws.close();
+            }
+
+            connect();
+        })();
     </script>
 </body>
 

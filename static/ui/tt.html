@@ -452,7 +452,7 @@
   </dialog>
 
   <script>
-    const API_BASE = (location.protocol === 'file:' || location.port !== '5050')
+    const API_BASE = (location.protocol === 'file:')
       ? 'http://localhost:5050'
       : '';
     const apiFetch = (path, opts) => fetch(API_BASE + path, opts);
@@ -771,9 +771,16 @@
     async function reload() {
       try {
         console.log('[TT] Fetching /timetable...');
-        const r = await apiFetch('/timetable');
+        const r = await apiFetch('/timetable', {
+          headers: { 'Accept': 'application/json' }
+        });
+
+        if (!r.ok) {
+          const errText = await r.text();
+          throw new Error(`伺服器回應錯誤 (${r.status}): ${errText}`);
+        }
+
         const j = await r.json();
-        if (!j.ok) throw new Error(j.error || 'API error');
 
         const enabled = typeof j.enabled === 'boolean' ? j.enabled : !!(j.data && j.data.enabled);
         applyEnabled(enabled);
