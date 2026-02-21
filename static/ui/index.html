@@ -1414,8 +1414,10 @@
           const lang = $("#lang").value;
           const gender = $("#gender").value;
           try {
-            // 🆕 Use new metadata-aware endpoint
+            // 1. Send command to backend (simulated)
             await this.postJSON("/api/speak_v2", { text, lang, gender });
+            // 2. [DEMO ONLY] Directly play audio in browser
+            this.auditionText(text, this.normalizeLang(lang));
           } catch (e) {
             alert("播放失敗：" + e.message);
           }
@@ -1528,7 +1530,15 @@
           if (!name) return;
 
           if (act === "play") {
-            await this.postForm("/cmd", { cmd: "PlayMP3:" + name });
+            // [DEMO ONLY] Play directly in browser
+            const base = name.split("/").pop();
+            const url = "/download/" + encodeURIComponent(base);
+            const player = this.shadowRoot.querySelector("#taigi-audio-player");
+            if (player) {
+              player.src = url;
+              this.shadowRoot.querySelector("#taigi-audio-preview").style.display = "flex";
+              player.play();
+            }
           } else if (act === "download") {
             const base = name.split("/").pop();
             window.open("/download/" + encodeURIComponent(base), "_blank");
@@ -1795,13 +1805,10 @@
           let txt = (previewText && $("#transPreview").style.display !== "none") ? previewText : ($("#msg").value || "").trim();
 
           if (!txt) return alert("請先輸入文字");
-          const gsel = $("#gender");
-          const g = (gsel && gsel.value === "male") ? "m" : "f";
           try {
-            // 🆕 Speed control
-            const rateVal = $("#rate") ? parseInt($("#rate").value, 10) : 0;
-            const speed = 1.0 + (rateVal / 100.0);
-            await this.postJSON("/taigi/say", { text: txt, gender: g, direction: "raw", play: true, speed: speed });
+            // 1. Send command to backend (optional for demo)
+            // 2. Play in browser
+            this.auditionText(txt, "nan-TW");
           } catch (e) {
             alert("台語播放失敗：" + e.message);
           }
