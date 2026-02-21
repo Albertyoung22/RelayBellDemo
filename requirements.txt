@@ -10,13 +10,7 @@ qrcode
 Pillow
 gTTS
 waitress
-googletrans==4.0.0-rc1
+deep-translator
 bcrypt
-# pystray (Depends on X11, not for headless)
-# Heavy AI/ML removed for Render Free Tier to avoid memory error
-# gradio
-# WeTextProcessing
-# diffusers
-# hydra-core
-# onnxruntime
-# speechbrain
+h11==0.14.0
+wsproto==1.2.0
