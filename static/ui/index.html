@@ -112,7 +112,6 @@
       <span id="nowText"
         style="margin-right:12px;opacity:.9;display:inline-block;min-width:140px;text-align:right">--:--:--</span>
       <a href="index.html">🎛 主控台</a>
-      <a href="/demo" style="color:#ffeb3b; font-weight:bold;">✨ 展示廳</a>
       <a href="mall_dashboard.html">🏢 商場</a>
       <a href="market.html">🍎 果菜市場</a>
       <a href="sched.html">🕐 排程</a>
@@ -1414,10 +1413,8 @@
           const lang = $("#lang").value;
           const gender = $("#gender").value;
           try {
-            // 1. Send command to backend (simulated)
+            // 🆕 Use new metadata-aware endpoint
             await this.postJSON("/api/speak_v2", { text, lang, gender });
-            // 2. [DEMO ONLY] Directly play audio in browser
-            this.auditionText(text, this.normalizeLang(lang));
           } catch (e) {
             alert("播放失敗：" + e.message);
           }
@@ -1530,15 +1527,7 @@
           if (!name) return;
 
           if (act === "play") {
-            // [DEMO ONLY] Play directly in browser
-            const base = name.split("/").pop();
-            const url = "/download/" + encodeURIComponent(base);
-            const player = this.shadowRoot.querySelector("#taigi-audio-player");
-            if (player) {
-              player.src = url;
-              this.shadowRoot.querySelector("#taigi-audio-preview").style.display = "flex";
-              player.play();
-            }
+            await this.postForm("/cmd", { cmd: "PlayMP3:" + name });
           } else if (act === "download") {
             const base = name.split("/").pop();
             window.open("/download/" + encodeURIComponent(base), "_blank");
@@ -1805,10 +1794,13 @@
           let txt = (previewText && $("#transPreview").style.display !== "none") ? previewText : ($("#msg").value || "").trim();
 
           if (!txt) return alert("請先輸入文字");
+          const gsel = $("#gender");
+          const g = (gsel && gsel.value === "male") ? "m" : "f";
           try {
-            // 1. Send command to backend (optional for demo)
-            // 2. Play in browser
-            this.auditionText(txt, "nan-TW");
+            // 🆕 Speed control
+            const rateVal = $("#rate") ? parseInt($("#rate").value, 10) : 0;
+            const speed = 1.0 + (rateVal / 100.0);
+            await this.postJSON("/taigi/say", { text: txt, gender: g, direction: "raw", play: true, speed: speed });
           } catch (e) {
             alert("台語播放失敗：" + e.message);
           }
@@ -2096,6 +2088,57 @@
     fcb.addEventListener('mousedown', () => fcb.style.transform = 'scale(0.95)');
     fcb.addEventListener('mouseup', () => fcb.style.transform = 'scale(1)');
     fcb.addEventListener('mouseleave', () => fcb.style.transform = 'scale(1)');
+  </script>
+  <!-- Audio Receiver for Redirected Audio -->
+  <div id="audio-receiver-status"
+    style="position:fixed; bottom:10px; right:10px; font-size:10px; color:#999; z-index:9999;">Audio Receiver: OFF</div>
+  <audio id="web-audio-player" style="display:none;"></audio>
+  <script>
+    (function () {
+      let ws;
+      const player = document.getElementById('web-audio-player');
+      const status = document.getElementById('audio-receiver-status');
+      function connect() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}/ws/web`);
+        ws.onopen = () => {
+          status.textContent = "Audio Receiver: ON";
+          status.style.color = "rgba(0, 150, 0, 0.7)";
+        };
+        ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === 'play_audio') {
+              player.src = data.url;
+              player.play().catch(err => {
+                console.warn("Need gesture", err);
+                if (document.getElementById('play-gesture-btn')) return;
+                const btn = document.createElement('button');
+                btn.id = 'play-gesture-btn';
+                btn.textContent = "點擊以啟用音訊接收";
+                btn.style = "position:fixed; top:20px; right:20px; z-index:10000; padding:10px; background:#1e7bd8; color:white; border:none; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.3); font-weight:bold;";
+                btn.onclick = () => { player.play(); btn.remove(); };
+                document.body.appendChild(btn);
+              });
+            } else if (data.type === 'stop_audio') {
+              player.pause();
+              player.currentTime = 0;
+            } else if (data.type === 'pause_audio') {
+              player.pause();
+            } else if (data.type === 'resume_audio') {
+              player.play().catch(e => { });
+            }
+          } catch (err) { }
+        };
+        ws.onclose = () => {
+          status.textContent = "Audio Receiver: DISCONNECTED";
+          status.style.color = "red";
+          setTimeout(connect, 3000);
+        };
+        ws.onerror = () => ws.close();
+      }
+      connect();
+    })();
   </script>
 </body>
 
