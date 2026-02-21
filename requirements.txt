@@ -1,7 +1,7 @@
 pyserial
 flask
 flask-sock
-pygame
+pygame==2.5.2
 yt-dlp
 edge-tts
 requests
@@ -12,10 +12,11 @@ gTTS
 waitress
 googletrans==4.0.0-rc1
 bcrypt
-pystray
-gradio
-WeTextProcessing
-diffusers
-hydra-core
-onnxruntime
-speechbrain
+# pystray (Depends on X11, not for headless)
+# Heavy AI/ML removed for Render Free Tier to avoid memory error
+# gradio
+# WeTextProcessing
+# diffusers
+# hydra-core
+# onnxruntime
+# speechbrain
