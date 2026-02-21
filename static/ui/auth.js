@@ -1,37 +1,25 @@
-(function () {
-  function redirectToLogin() {
-    const next = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.replace('/login?next=' + next);
-  }
+/* auth.js - 為雲端展示模式強行解除登入檢查 */
 
-  function enforceAuth() {
-    fetch('/auth/status', { credentials: 'same-origin', cache: 'no-store' })
-      .then(resp => (resp.ok ? resp.json() : { logged_in: false }))
-      .then(data => {
-        if (!data || !data.logged_in) redirectToLogin();
-      })
-      .catch(redirectToLogin);
-  }
+(function() {
+    console.log("[AUTH] 已啟動展示廳專用免登入模式");
+    
+    // 1. 強行在本地端設置一個虛假的登入 ID
+    localStorage.setItem('X_TOKEN', 'demo-mode-unlocked');
 
-  function bindLogout(btn) {
-    if (!btn || btn.dataset.authBound === '1') return;
-    btn.dataset.authBound = '1';
-    btn.addEventListener('click', async function () {
-      if (btn.disabled) return;
-      btn.disabled = true;
-      btn.style.opacity = '0.7';
-      try {
-        await fetch('/auth/logout', { method: 'POST', credentials: 'same-origin' });
-      } finally {
-        window.location.href = '/login';
-      }
-    });
-  }
+    // 2. 劫持原本的 token 檢查邏輯
+    window.getToken = function() { return 'demo-mode-unlocked'; };
 
-  // Toolbar injection removed to prevent duplicate logout buttons
-  // function ensureToolbar() { ... }
-  // function initToolbar() { ... }
+    // 3. 停用 logout 登出功能，避免誤點
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.onclick = function() { 
+            alert("展示模式下已停用登出功能");
+        };
+        logoutBtn.style.opacity = "0.5";
+    }
 
-  enforceAuth();
-  // initToolbar();
+    // 4. 重寫 checkAuth (如果有的話)，讓它永遠回傳成功
+    window.checkAuth = async function() { return true; };
+
+    console.log("[AUTH] 解鎖成功：index.html 現在可以自由存取");
 })();
