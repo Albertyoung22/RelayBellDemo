@@ -1,2 +1,2 @@
-web: python RelayBell_demo.py
+web: python demo_backend.py
 
