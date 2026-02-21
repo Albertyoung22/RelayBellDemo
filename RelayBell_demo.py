@@ -79,7 +79,13 @@ FIRE_ALARM_PIN = "CTS"      # 偵測腳位: CTS 或 DSR
 
 # ---- 隱性匯入（方便 PyInstaller）----
 
-import serial, serial.tools.list_ports, serial.win32, serial.serialwin32  # noqa: F401
+import serial, serial.tools.list_ports
+if not IS_LINUX:
+    try:
+        import serial.win32, serial.serialwin32  # noqa: F401
+    except ImportError:
+        pass
+
 try:
     import ollama
     HAS_OLLAMA = True
