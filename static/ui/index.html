@@ -2105,22 +2105,47 @@
           status.textContent = "Audio Receiver: ON";
           status.style.color = "rgba(0, 150, 0, 0.7)";
         };
+        let audioQueue = [];
+        let isPlaying = false;
+        function processQueue() {
+          if (isPlaying || audioQueue.length === 0) return;
+          isPlaying = true;
+          const url = audioQueue.shift();
+          console.log("Processing audio queue, playing:", url);
+
+          player.onended = () => {
+            console.log("Audio finished:", url);
+            isPlaying = false;
+            player.onended = null;
+            processQueue();
+          };
+
+          player.src = url;
+          player.play().catch(err => {
+            console.warn("Need gesture", err);
+            isPlaying = false;
+            player.onended = null;
+            if (!document.getElementById('play-gesture-btn')) {
+              const btn = document.createElement('button');
+              btn.id = 'play-gesture-btn';
+              btn.textContent = "點擊以啟用音訊接收";
+              btn.style = "position:fixed; top:20px; right:20px; z-index:10000; padding:10px; background:#1e7bd8; color:white; border:none; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.3); font-weight:bold;";
+              btn.onclick = () => { player.play(); btn.remove(); processQueue(); };
+              document.body.appendChild(btn);
+            }
+          });
+        }
+
         ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data);
             if (data.type === 'play_audio') {
-              player.src = data.url;
-              player.play().catch(err => {
-                console.warn("Need gesture", err);
-                if (document.getElementById('play-gesture-btn')) return;
-                const btn = document.createElement('button');
-                btn.id = 'play-gesture-btn';
-                btn.textContent = "點擊以啟用音訊接收";
-                btn.style = "position:fixed; top:20px; right:20px; z-index:10000; padding:10px; background:#1e7bd8; color:white; border:none; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.3); font-weight:bold;";
-                btn.onclick = () => { player.play(); btn.remove(); };
-                document.body.appendChild(btn);
-              });
+              console.log("Incoming audio command:", data.url);
+              audioQueue.push(data.url);
+              processQueue();
             } else if (data.type === 'stop_audio') {
+              audioQueue = [];
+              isPlaying = false;
               player.pause();
               player.currentTime = 0;
             } else if (data.type === 'pause_audio') {

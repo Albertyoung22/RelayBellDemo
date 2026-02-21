@@ -1467,6 +1467,114 @@
         }
     </script>
 
+    <!-- Audio Receiver for Redirected Audio -->
+    <div id="audio-receiver-status"
+        style="position:fixed; bottom:10px; right:10px; font-size:10px; color:rgba(255,255,255,0.5); z-index:9999;">
+        Audio Receiver: OFF</div>
+    <audio id="web-audio-player" style="display:none;"></audio>
+
+    <script>
+        (function () {
+            let ws;
+            const player = document.getElementById('web-audio-player');
+            const status = document.getElementById('audio-receiver-status');
+
+            function connect() {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                ws = new WebSocket(`${protocol}//${window.location.host}/ws/web`);
+
+                ws.onopen = () => {
+                    status.textContent = "Audio Receiver: ON";
+                    status.style.color = "rgba(0, 255, 0, 0.7)";
+                    console.log("[AudioWS] Connected");
+                };
+
+                let audioQueue = [];
+                let isPlaying = false;
+
+                function processQueue() {
+                    if (isPlaying || audioQueue.length === 0) {
+                        console.log("[AudioWS] Queue idle or busy. isPlaying:", isPlaying, "Length:", audioQueue.length);
+                        return;
+                    }
+                    isPlaying = true;
+                    const url = audioQueue.shift();
+                    console.log("[AudioWS] Starting playback of:", url);
+
+                    player.onended = () => {
+                        console.log("[AudioWS] Finished playing:", url);
+                        isPlaying = false;
+                        player.onended = null;
+                        processQueue();
+                    };
+
+                    player.src = url;
+                    player.play().catch(err => {
+                        console.warn("[AudioWS] Play failed for:", url, err);
+                        isPlaying = false;
+                        player.onended = null;
+
+                        if (!document.getElementById('play-gesture-btn')) {
+                            const btn = document.createElement('button');
+                            btn.id = 'play-gesture-btn';
+                            btn.textContent = "點擊以啟用音訊接收";
+                            btn.style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10000; padding:20px; background:red; color:white; border-radius:10px; font-weight:bold;";
+                            btn.onclick = () => {
+                                player.play();
+                                btn.remove();
+                                processQueue();
+                            };
+                            document.body.appendChild(btn);
+                        } else {
+                            // If button already exists, wait for user to click it
+                            // but we might want to try next one after a delay
+                            setTimeout(processQueue, 2000);
+                        }
+                    });
+                }
+
+                ws.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.type === 'play_audio') {
+                            console.log("[AudioWS] New sound received:", data.url);
+                            audioQueue.push(data.url);
+                            processQueue();
+                        } else if (data.type === 'stop_audio') {
+                            console.log("[AudioWS] Received Stop Command");
+                            audioQueue = [];
+                            isPlaying = false;
+                            player.pause();
+                            player.currentTime = 0;
+                        } else if (data.type === 'pause_audio') {
+                            console.log("[AudioWS] Received Pause Command");
+                            player.pause();
+                        } else if (data.type === 'resume_audio') {
+                            console.log("[AudioWS] Received Resume Command");
+                            player.play().catch(e => console.warn(e));
+                        }
+                    } catch (err) {
+                        console.error("[AudioWS] Message error:", err);
+                    }
+                };
+
+                ws.onclose = () => {
+                    status.textContent = "Audio Receiver: DISCONNECTED";
+                    status.style.color = "rgba(255, 0, 0, 0.7)";
+                    console.log("[AudioWS] Disconnected, retrying...");
+                    setTimeout(connect, 3000);
+                };
+
+                ws.onerror = (err) => {
+                    console.error("[AudioWS] Error:", err);
+                    ws.close();
+                };
+            }
+
+            connect();
+        })();
+    </script>
+
     <!-- QR 快捷鈕（右上角浮動） -->
     <button id="qrFloatBtn" onclick="window.open('/qr?src=auto','_blank')">QR Code</button>
 
