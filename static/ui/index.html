@@ -2134,11 +2134,20 @@
             setTimeout(processQueue, 100);
           };
 
+          player.onerror = () => {
+            console.error("Audio Load Error:", url);
+            isPlaying = false;
+            player.onended = null;
+            player.onerror = null;
+            setTimeout(processQueue, 100);
+          };
+
           player.src = url;
           player.play().catch(err => {
             console.warn("Need gesture", err);
             isPlaying = false;
             player.onended = null;
+            player.onerror = null;
             if (!document.getElementById('play-gesture-btn')) {
               const btn = document.createElement('button');
               btn.id = 'play-gesture-btn';

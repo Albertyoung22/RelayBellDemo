@@ -1323,8 +1323,18 @@
                     console.log("[AudioWS] Redir playing:", url);
 
                     player.onended = () => {
+                        console.log("[AudioWS] Finished playing:", url);
                         isPlaying = false;
                         player.onended = null;
+                        player.onerror = null;
+                        setTimeout(processQueue, 100);
+                    };
+
+                    player.onerror = () => {
+                        console.error("[AudioWS] Error loading:", url);
+                        isPlaying = false;
+                        player.onended = null;
+                        player.onerror = null;
                         setTimeout(processQueue, 100);
                     };
 
@@ -1333,6 +1343,7 @@
                         console.warn("[AudioWS] Gesture needed", err);
                         isPlaying = false;
                         player.onended = null;
+                        player.onerror = null;
 
                         if (!document.getElementById('play-gesture-btn')) {
                             const btn = document.createElement('button');
