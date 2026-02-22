@@ -231,9 +231,22 @@
                     <button class="btn btn-secondary" id="btnGenMale">🗣️ 生成男聲 (阿明)</button>
                 </div>
 
+                <!-- 廣播播放區 -->
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button class="btn" id="btnBroadcastF" style="background:#0891b2; flex:1;">
+                        📢 廣播女聲（全端播音）
+                    </button>
+                    <button class="btn" id="btnBroadcastM" style="background:#0891b2; flex:1;">
+                        📢 廣播男聲（全端播音）
+                    </button>
+                </div>
+                <div id="broadcastStatus"
+                    style="display:none; margin-top:0.6rem; background:#ecfeff; border:1px solid #06b6d4; border-radius:0.5rem; padding:0.5rem 0.75rem; font-size:0.82rem; color:#0e7490;">
+                </div>
+
                 <div class="result-area" id="resultArea">
                     <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-dark); margin-bottom: 0.5rem;">
-                        🔉 語音素材預覽：</div>
+                        🔉 語音素材預覽（僅本瀏覽器）：</div>
                     <audio id="audioPlayer" class="audio-player" controls></audio>
                     <div class="download-links">
                         <a id="linkDownload" href="#" download class="download-link">💾 下載 MP3 素材</a>
@@ -320,6 +333,59 @@
         $('speedRange').oninput = (e) => {
             $('speedVal').innerText = e.target.value + 'x';
         };
+
+        // ── 廣播播放（後端喇叭＋所有瀏覽器同步）
+        const broadcastAudio = async (voice) => {
+            const text = $('tgtText').value.trim() || $('srcText').value.trim();
+            if (!text) return alert('請先輸入或生成台文內容');
+
+            const btnF = $('btnBroadcastF');
+            const btnM = $('btnBroadcastM');
+            const statusEl = $('broadcastStatus');
+            const speed = parseFloat($('speedRange').value);
+
+            // 決定 direction：若台文框有內容就用 raw，否則從國語框自動翻譯
+            const hasTgtText = !!$('tgtText').value.trim();
+            const direction = hasTgtText ? 'raw' : 'zh2nan';
+            const srcText = hasTgtText ? text : $('srcText').value.trim();
+
+            btnF.disabled = btnM.disabled = true;
+            statusEl.style.display = 'block';
+            statusEl.textContent = '⏳ 廣播合成中，請稍候…';
+
+            try {
+                const res = await postJSON('/taigi/say', {
+                    text: srcText,
+                    direction,
+                    voice,
+                    speed,
+                    play: true
+                });
+                if (res.ok) {
+                    statusEl.textContent = `✅ 廣播已啟動！（後端喇叭＋所有瀏覽器）　文字：${res.text || srcText}`;
+                    statusEl.style.background = '#f0fdf4';
+                    statusEl.style.borderColor = '#4ade80';
+                    statusEl.style.color = '#166534';
+                } else {
+                    statusEl.textContent = '❌ 廣播失敗：' + (res.error || '未知錯誤');
+                    statusEl.style.background = '#fef2f2';
+                    statusEl.style.borderColor = '#f87171';
+                    statusEl.style.color = '#991b1b';
+                }
+            } catch (e) {
+                statusEl.textContent = '❌ 系統連線失敗：' + e.message;
+                statusEl.style.background = '#fef2f2';
+                statusEl.style.borderColor = '#f87171';
+                statusEl.style.color = '#991b1b';
+            } finally {
+                btnF.disabled = btnM.disabled = false;
+                // 5 秒後自動隱藏狀態
+                setTimeout(() => { statusEl.style.display = 'none'; }, 8000);
+            }
+        };
+
+        $('btnBroadcastF').onclick = () => broadcastAudio('f');
+        $('btnBroadcastM').onclick = () => broadcastAudio('m');
 
     </script>
 </body>
