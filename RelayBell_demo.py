@@ -3460,9 +3460,9 @@ def _get_fx_sound(path):
 
 
 
-def play_fx(filename, ignore_interrupt=True):
+def play_fx(filename, ignore_interrupt=True, wait=True):
     # 重導向到 play_sound 以便廣播到前端
-    play_sound(filename, ignore_interrupt=ignore_interrupt)
+    play_sound(filename, ignore_interrupt=ignore_interrupt, wait=wait)
 
 def stop_web_audio():
     """發送停止指令給前端"""
@@ -3564,76 +3564,45 @@ def _set_progress(pct):
 
 def broadcast_web_audio(filename, duration=0):
     """
-    廣播音訊播放給所有 Web 用戶
+    廣播音訊播放給所有 Web 用戶 (已優化，避免 os.walk)
     """
-    # [Fix] Pre-resolve path using fuzzy logic to ensure frontend gets a valid path
-    rel_path = filename
-    try:
-        # 進行模糊搜尋以確保路徑正確
-        basename = os.path.basename(filename).lower()
-        search_dirs = [APP_DIR, UPLOAD_DIR, RECORD_DIR, os.path.join(DATA_DIR, "temp_audio")]
-        found_abs = None
-        for sdir in search_dirs:
-            if not os.path.exists(sdir): continue
-            for r, d, files in os.walk(sdir):
-                for f in files:
-                    if f.lower() == basename:
-                        found_abs = os.path.join(r, f)
-                        break
-                if found_abs: break
-            if found_abs: break
-        
-        if found_abs:
-            # 決定虛擬前綴
-            abs_l = found_abs.lower()
-            up_l = os.path.abspath(UPLOAD_DIR).lower()
-            rec_l = os.path.abspath(RECORD_DIR).lower()
-            if abs_l.startswith(up_l):
-                rel_path = "uploads/" + os.path.relpath(found_abs, UPLOAD_DIR).replace('\\', '/')
-            elif abs_l.startswith(rec_l):
-                rel_path = "rec/" + os.path.relpath(found_abs, RECORD_DIR).replace('\\', '/')
-            else:
-                rel_path = os.path.basename(found_abs)
-    except: pass
-
-    # 建構 API URL (Fix: no backslash in f-string for old Python)
-    clean_path = rel_path.replace('\\', '/')
-    url = f"/api/audio_proxy?path={quote(clean_path)}"
-    print(f"[WebAudio] Broadcast URL: {url} (Orig: {filename})")
+    basename = os.path.basename(filename)
     
-    base_name = os.path.basename(filename)
+    # 決定網頁可存取的相對路徑
+    if "UploadedMP3" in filename or "uploads" in filename.lower():
+        rel_path = f"uploads/{basename}"
+    elif "Recoding" in filename or "records" in filename.lower():
+        rel_path = f"records/{basename}"
+    elif "temp_audio" in filename:
+        rel_path = f"api/temp_audio/{basename}"
+    else:
+        # 預設為根目錄資源
+        rel_path = basename
+        
+    clean_rel = rel_path.replace('\\', '/')
+    url = f"/api/audio_proxy?path={quote(clean_rel)}"
     
     msg = json.dumps({
         "type": "play_audio",
         "url": url,
-        "name": base_name,
+        "name": basename,
         "duration": duration,
         "ts": time.time()
     })
     
     with WEB_WS_LOCK:
-        clients = list(WEB_WS_CLIENTS)
-        count = len(clients)
-        
-    print(f"[WebAudio] Sending to {count} clients: {url}")
-    
-    if count == 0:
-        print("[WebAudio] WARNING: No web clients connected! Audio will not be heard on frontend.")
-        
-    with WEB_WS_LOCK:
         dead = []
-        for ws in clients:
+        for ws in WEB_WS_CLIENTS:
             try:
                 ws.send(msg)
-            except Exception as e:
-                print(f"[WebAudio] Send failed: {e}")
+            except:
                 dead.append(ws)
         for d in dead:
             if d in WEB_WS_CLIENTS:
                 WEB_WS_CLIENTS.remove(d)
 
-def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
-    print(f"[Speaker] 播放音訊: {filename}")
+def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=True):
+    print(f"[Speaker] 播放音訊: {filename} (wait={wait})")
     try:
         # Resolve real path
         real_path = filename
@@ -3675,6 +3644,9 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
         broadcast_web_audio(filename, duration_estimate)
         
         # 4. Progress Loop
+        if not wait:
+            return  # Return immediately for non-blocking sounds (chimes)
+            
         ui_safe(_set_progress, 0); STATE["progress"] = 0
         t = 0
         while t < duration_estimate:
@@ -4770,8 +4742,9 @@ async def speak_text_async(text, force_chime_off=False):
                         print(f"[DEBUG] MeloTTS Chime check: CHIME_ENABLED={CHIME_ENABLED}, should_chime={should_chime}, FILE={START_SOUND}")
                         if should_chime and START_SOUND and os.path.isfile(START_SOUND):
                             print(f"[Chime] Playing start (Melo): {START_SOUND}")
-                            play_fx(START_SOUND, ignore_interrupt=True)
-                            await asyncio.sleep(0.6) # Wait for chime to start broadcast simulation
+                            # Use wait=False for better UX + short delay
+                            play_sound(START_SOUND, ignore_interrupt=True, wait=False)
+                            await asyncio.sleep(1.0) # Just wait a bit for the chime to "kick in"
                         else:
                             print(f"[Chime] Skipping start. should_chime={should_chime}, file_ex={os.path.isfile(START_SOUND) if START_SOUND else 'None'}")
                      except Exception as ce:
@@ -4810,8 +4783,8 @@ async def speak_text_async(text, force_chime_off=False):
                     # [Chime] Piper Force
                     if should_chime and START_SOUND and os.path.isfile(START_SOUND):
                          print(f"[Chime] Playing start (Piper): {START_SOUND}")
-                         play_fx(START_SOUND, ignore_interrupt=True)
-                         await asyncio.sleep(0.6)
+                         play_sound(START_SOUND, ignore_interrupt=True, wait=False)
+                         await asyncio.sleep(1.0)
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
@@ -4861,8 +4834,9 @@ async def speak_text_async(text, force_chime_off=False):
                     # [Chime] Azure
                     if should_chime and START_SOUND and os.path.isfile(START_SOUND):
                          print(f"[Chime] Playing start (Azure): {START_SOUND}")
-                         play_fx(START_SOUND, ignore_interrupt=True)
-                         await asyncio.sleep(0.6)
+                         play_sound(START_SOUND, ignore_interrupt=True, wait=False)
+                         await asyncio.sleep(1.0)
+                         
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
