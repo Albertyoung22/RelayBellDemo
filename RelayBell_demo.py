@@ -3501,27 +3501,30 @@ def broadcast_web_audio(filename, duration=0):
     """
     廣播音訊播放給所有 Web 用戶
     """
-    print(f"[WebAudio] Broadcasting: {filename} ({duration}s)")
     # [Optimization] Use relative paths for known directories to make URLs cleaner and more robust
     rel_path = filename
     try:
         # Check if the path is relative to APP_DIR or UPLOAD_DIR
-        app_abs = os.path.abspath(APP_DIR)
-        up_abs = os.path.abspath(UPLOAD_DIR)
-        rec_abs = os.path.abspath(RECORD_DIR)
-        file_abs = os.path.abspath(filename)
+        app_abs = os.path.abspath(APP_DIR).lower()
+        up_abs = os.path.abspath(UPLOAD_DIR).lower()
+        rec_abs = os.path.abspath(RECORD_DIR).lower()
+        file_abs = os.path.abspath(filename).lower()
+        
+        raw_file_abs = os.path.abspath(filename)
         
         if file_abs.startswith(up_abs):
-            rel_path = "uploads/" + os.path.relpath(file_abs, up_abs).replace('\\', '/')
+            rel_path = "uploads/" + os.path.relpath(raw_file_abs, os.path.abspath(UPLOAD_DIR)).replace('\\', '/')
         elif file_abs.startswith(rec_abs):
-            rel_path = "rec/" + os.path.relpath(file_abs, rec_abs).replace('\\', '/')
+            rel_path = "rec/" + os.path.relpath(raw_file_abs, os.path.abspath(RECORD_DIR)).replace('\\', '/')
         elif file_abs.startswith(app_abs):
-            rel_path = os.path.relpath(file_abs, app_abs).replace('\\', '/')
-    except:
+            rel_path = os.path.relpath(raw_file_abs, os.path.abspath(APP_DIR)).replace('\\', '/')
+    except Exception as ex:
+        print(f"[WebAudio] Path optimization error: {ex}")
         pass
 
     # 建構 API URL
     url = f"/api/audio_proxy?path={quote(rel_path)}"
+    print(f"[WebAudio] URL generated: {url}")
     
     base_name = os.path.basename(filename)
     
@@ -6090,6 +6093,11 @@ def handle_msg(text, addr):
         # Optional: insert to text area to show what is being spoken
 
         text_area_insert(f"氣象播報內容：{text}")
+        
+        # [Fix] Enqueue for playback and return
+        if not (stop_playback_event.is_set() or voice_muted):
+             enqueue_drop_old(speech_queue, text)
+        return
 
 
 
