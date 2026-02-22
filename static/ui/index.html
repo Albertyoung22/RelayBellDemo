@@ -553,6 +553,15 @@
                             <button class="ghost" style="font-size: 0.85rem;" onclick="this.getRootNode().host.shadowRoot.querySelector('#taigi-audio-module')?.style.display='none'">✖ 關閉</button>
                         </div>
                     </div>
+
+                    <!-- [NEW] Hidden Audition Player (Required by JS) -->
+                    <div id="taigi-audio-preview" class="result-area" style="display:none; background: #f0f9ff; border: 1px solid #7dd3fc; border-radius: 8px; padding: 10px; margin-top: 10px;">
+                        <div style="font-size: 0.8rem; font-weight: 700; color: #0369a1; margin-bottom: 6px;">🎧 語音試聽：</div>
+                        <audio id="taigi-audio-player" style="width:100%; height:30px;" controls></audio>
+                        <div style="text-align:right; margin-top:4px;">
+                           <button class="ghost" style="font-size: 0.75rem;" onclick="this.getRootNode().host.shadowRoot.querySelector('#taigi-audio-preview').style.display='none'">✖ 隱藏試聽</button>
+                        </div>
+                    </div>
                     <!-- 🆕 即時錄音廣播 -->
                     <div class="btns" style="margin-top:12px; border-top:1px dashed #d6e3f7; padding-top:12px;">
                        <!-- 🎤 Hold to Talk Button -->
