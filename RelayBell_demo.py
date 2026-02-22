@@ -1530,8 +1530,37 @@ def api_audio_proxy():
             print(f"[AudioProxy] 403 Forbidden Extension: {ext} for {abs_path}")
             return abort(403)
         
-    print(f"[AudioProxy] Serving: {abs_path} as {mimetype}")
-    return send_file(abs_path, mimetype=mimetype)
+    # [Fix] support for Range header (required by some browsers/mobile)
+    try:
+        from flask import make_response
+        file_size = os.path.getsize(abs_path)
+        range_header = request.headers.get('Range', None)
+        
+        if range_header:
+            byte_range = range_header.replace('bytes=', '').split('-')
+            start = int(byte_range[0])
+            end = int(byte_range[1]) if byte_range[1] else file_size - 1
+            length = (end - start) + 1
+            
+            with open(abs_path, 'rb') as f:
+                f.seek(start)
+                data = f.read(length)
+                
+            rv = make_response(data)
+            rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
+            rv.headers.add('Accept-Ranges', 'bytes')
+            rv.headers.add('Content-Length', str(length))
+            rv.headers.add('Content-Type', mimetype)
+            rv.status_code = 206
+            return rv
+            
+        else:
+            rv = make_response(send_file(abs_path, mimetype=mimetype))
+            rv.headers.add('Accept-Ranges', 'bytes')
+            return rv
+    except Exception as e:
+        print(f"[AudioProxy] Error serving file: {e}")
+        return send_file(abs_path, mimetype=mimetype)
 
 @sock.route('/ws/live')
 
@@ -3537,36 +3566,39 @@ def broadcast_web_audio(filename, duration=0):
     """
     廣播音訊播放給所有 Web 用戶
     """
-    # [Optimization] Use relative paths for known directories
+    # [Fix] Pre-resolve path using fuzzy logic to ensure frontend gets a valid path
     rel_path = filename
     try:
-        app_abs = os.path.abspath(APP_DIR).lower()
-        up_abs = os.path.abspath(UPLOAD_DIR).lower()
-        rec_abs = os.path.abspath(RECORD_DIR).lower()
+        # 進行模糊搜尋以確保路徑正確
+        basename = os.path.basename(filename).lower()
+        search_dirs = [APP_DIR, UPLOAD_DIR, RECORD_DIR, os.path.join(DATA_DIR, "temp_audio")]
+        found_abs = None
+        for sdir in search_dirs:
+            if not os.path.exists(sdir): continue
+            for r, d, files in os.walk(sdir):
+                for f in files:
+                    if f.lower() == basename:
+                        found_abs = os.path.join(r, f)
+                        break
+                if found_abs: break
+            if found_abs: break
         
-        # Ensure we have an absolute path to check against
-        full_filename = filename
-        if not os.path.isabs(full_filename):
-            full_filename = os.path.abspath(os.path.join(APP_DIR, filename))
-        
-        file_abs = full_filename.lower()
-        raw_file_abs = full_filename
-        
-        if file_abs.startswith(up_abs):
-            rel_path = "uploads/" + os.path.relpath(raw_file_abs, os.path.abspath(UPLOAD_DIR)).replace('\\', '/')
-        elif file_abs.startswith(rec_abs):
-            rel_path = "rec/" + os.path.relpath(raw_file_abs, os.path.abspath(RECORD_DIR)).replace('\\', '/')
-        elif file_abs.startswith(app_abs):
-            rel_path = os.path.relpath(raw_file_abs, os.path.abspath(APP_DIR)).replace('\\', '/')
-        else:
-            # If outside, just use basename (last resort fallback)
-            rel_path = os.path.basename(filename)
-    except Exception as ex:
-        print(f"[WebAudio] Path optimization error: {ex}")
-        pass
+        if found_abs:
+            # 決定虛擬前綴
+            abs_l = found_abs.lower()
+            up_l = os.path.abspath(UPLOAD_DIR).lower()
+            rec_l = os.path.abspath(RECORD_DIR).lower()
+            if abs_l.startswith(up_l):
+                rel_path = "uploads/" + os.path.relpath(found_abs, UPLOAD_DIR).replace('\\', '/')
+            elif abs_l.startswith(rec_l):
+                rel_path = "rec/" + os.path.relpath(found_abs, RECORD_DIR).replace('\\', '/')
+            else:
+                rel_path = os.path.basename(found_abs)
+    except: pass
 
-    # 建構 API URL
-    url = f"/api/audio_proxy?path={quote(rel_path)}"
+    # 建構 API URL (Fix: no backslash in f-string for old Python)
+    clean_path = rel_path.replace('\\', '/')
+    url = f"/api/audio_proxy?path={quote(clean_path)}"
     print(f"[WebAudio] Broadcast URL: {url} (Orig: {filename})")
     
     base_name = os.path.basename(filename)
@@ -4016,19 +4048,8 @@ def _really_play_mp3_file(path):
     
 
     try:
-        # [Chime] Lead-in
-        if CHIME_ENABLED and START_SOUND and os.path.isfile(START_SOUND):
-            print(f"[Chime] Playing start (MP3): {START_SOUND}")
-            play_fx(START_SOUND, ignore_interrupt=True)
-            time.sleep(0.5)
-
         # [Fix] Don't hardcode duration, let play_sound calculate it
         play_sound(mp3_path)
-
-        # [Chime] Lead-out
-        if CHIME_ENABLED and END_SOUND and os.path.isfile(END_SOUND) and not stop_playback_event.is_set():
-             print(f"[Chime] Playing end (MP3): {END_SOUND}")
-             play_sound(END_SOUND, ignore_interrupt=True)
 
     except Exception as e:
 
@@ -4230,6 +4251,7 @@ def auto_unmute_if_needed():
 
 
 @with_relay_playback
+@with_relay_playback
 def taigi_play_wav_with_fx(path):
     """台語合成完成後，套用『直接播放』規格：Relay 開→前導→內容→結束→Relay 關。"""
     try:
@@ -4247,7 +4269,8 @@ def taigi_play_wav_with_fx(path):
             print(f"[Chime] Taigi start error: {e}")
 
         # 主播
-        play_sound(path, duration_estimate=10)
+        print(f"[Taigi] Playing synthesis: {path}")
+        play_sound(path) # 使用主播放器，支援 Web 廣播
 
         # 結束音
         try:
@@ -4259,12 +4282,8 @@ def taigi_play_wav_with_fx(path):
              print(f"[Chime] Taigi end error: {e}")
 
         ui_safe(set_playing_status, "✅ 台語播放完成")
-
     except Exception as e:
-
         text_area_insert(f"❌ 台語播放例外：{e}")
-
-@with_relay_playback
 
 def tts_full_play(text, force_chime_off=False): asyncio.run(speak_text_async(text, force_chime_off))
 
@@ -4639,6 +4658,7 @@ async def speak_text_async(text, force_chime_off=False):
                         k, v = part.split("=", 1)
                         if k == "L": local_lang = v
                         if k == "G": local_gender = v
+                        if k == "C" and v == "off": force_chime_off = True
             except Exception: pass
 
         stop_playback_event.clear()  # ←避免前導音被殘留的停止旗標打斷
@@ -5355,139 +5375,74 @@ def save_to_csv(message, sender="", relay_status=None, ip=None):
 
 def generate_taigi_tts(text, gender=None, speed_percent=None):
     """
-    產生台語語音檔 (不播放)。
-    回傳: 檔案絕對路徑 (位於 UPLOAD_DIR)
+    產生台語語音檔 (不播放)。模仿 taigi_edu.html 專用模組方式 (model6)。
+    回傳: 檔案絕對路徑
     """
     # 決定聲別
     if gender:
-        # e.g. "female" or "male"
-        voice_label = "normal_f2" if str(gender).startswith("f") else "normal_m2"
+        v_mode = "f" if str(gender).startswith("f") else "m"
     else:
-        # Fallback to global setting
         g = globals().get("voice_gender") or "female"
-        voice_label = "normal_f2" if g.startswith("f") else "normal_m2"
+        v_mode = "f" if g.startswith("f") else "m"
 
-    # 決定檔名 (唯一)
-    import hashlib
-    h = hashlib.md5(text.encode("utf-8")).hexdigest()[:8]
-    ts = int(time.time())
-    # Save to UPLOAD_DIR for easier download/preview
-    base_name = f"taigi_{ts}_{h}.mp3"
-    final_path = os.path.join(UPLOAD_DIR, base_name)
+    # 決定語速
+    speed = 1.0
+    if speed_percent is not None:
+        speed = float(speed_percent)
+    else:
+        v_rate = globals().get("voice_rate") # e.g. "+20%"
+        if v_rate:
+            try:
+                val = int(v_rate.replace("%","").strip())
+                speed = 1.0 + (val / 100.0)
+            except: pass
     
-    # 1. 嘗試專用模組
     try:
-        headers = {"x-api-key": TAIGI_TTS_API_KEY, "Content-Type": "application/json"}
-        payload = {"text": text, "model": "model5", "voice_label": voice_label, "user": ""}
-        
-        # Use existing fallback logic if available
-        if "TAIGI_TTS_ENDPOINTS" in globals() and "_post_with_fallback" in globals():
-             r = _post_with_fallback(TAIGI_TTS_ENDPOINTS, headers, payload, timeout=30)
-        else:
-             r = requests.post(TAIGI_TTS_ENDPOINT, headers=headers, json=payload, timeout=30)
-
-        if r.status_code == 200:
-            jr = r.json()
-            url = jr.get("converted_audio_url") or jr.get("url")
-            if url:
-                r2 = requests.get(url, stream=True, timeout=30)
-                if r2.status_code == 200:
-                    # Save RAW content first
-                    raw_ext = ".wav"
-                    temp_raw = final_path + ".raw" + raw_ext
-                    
-                    with open(temp_raw, "wb") as fp:
-                        for chunk in r2.iter_content(chunk_size=8192):
-                            if chunk: fp.write(chunk)
-                    
-                    # 速度調整 + 轉檔 MP3
-                    # Calculate factor
-                    factor = 1.0
-                    if speed_percent is not None:
-                        # speed_percent e.g. 1.2 or 0.8
-                        factor = float(speed_percent)
-                    else:
-                        # Use global
-                        v_rate = globals().get("voice_rate") # e.g. "+20%" or "-10%"
-                        if v_rate:
-                            try:
-                                val = int(v_rate.replace("%","").strip())
-                                factor = 1.0 + (val / 100.0)
-                            except: pass
-
-                    # Clamp
-                    if factor < 0.5: factor = 0.5
-                    if factor > 3.0: factor = 3.0
-                    
-                    # FFMPEG Convert/Effect
-                    if globals().get("_FFMPEG"):
-                        # If factor is effectively 1.0, just convert to MP3
-                        # else usage atempo
-                        filter_args = []
-                        if abs(factor - 1.0) > 0.01:
-                            filter_args = ["-filter:a", f"atempo={factor}"]
-                        
-                        cmd = [_FFMPEG, "-y", "-i", temp_raw, "-ac", "2", "-ar", "44100", "-b:a", "192k"] + filter_args + [final_path]
-                        
-                        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        
-                        # Clean raw
-                        try: os.remove(temp_raw)
-                        except: pass
-                        
-                        if os.path.exists(final_path):
-                            return final_path
-                    else:
-                        # No ffmpeg, just rename wav to mp3 (hacky) or keep wav? 
-                        # Ideally system needs ffmpeg. If not, just return wav path?
-                        # Let's assume we rename to .wav if ffmpeg missing
-                        final_path_wav = final_path.replace(".mp3", ".wav")
-                        os.rename(temp_raw, final_path_wav)
-                        return final_path_wav
-
+        # 呼叫高音質合成邏輯 (已串接 TaigiTTSClient)
+        result = _taigi_generate_audio_file(text, v_mode, speed=speed)
+        fname = result.get("file")
+        if fname:
+            return os.path.join(TAIGI_AUDIO_DIR, fname)
     except Exception as e:
-        print(f"[TaigiGen] Dedicated module failed: {e}")
-
-    # 2. Fallback itaigi
-    try:
-        api_url = f"https://itaigi.tw/api/tts/{text}"
-        resp = requests.get(api_url, timeout=7)
-        if resp.status_code == 200 and resp.content:
-             with open(final_path, "wb") as f:
-                 f.write(resp.content)
-             return final_path
-    except Exception as e:
-        print(f"[TaigiGen] itaigi failed: {e}")
-
-    # 3. Fallback gTTS
-    try:
-        tts = gTTS(text, lang='zh-tw') # gTTS uses zh-tw for Taiwanese accent approximation if nan not avail
-        tts.save(final_path)
-        return final_path
-    except Exception as e:
-        print(f"[TaigiGen] gTTS failed: {e}")
-
-    raise RuntimeError("All Taigi TTS methods failed")
+        print(f"[GenerateTaigi] Error: {e}")
+    return None
 
 
 def play_taigi_tts(text):
-    # 優先使用專用台語模組（learn-language.tokyo），失敗再退回 itaigi/gTTS。
+    """此處模仿 taigi_edu.html 的「發聲模組」方式：高音質合成 + 直接廣播。"""
     try:
-        # Generate
-        path = generate_taigi_tts(text)
+        # 自動偵測是否需要翻譯 (若文字為國語則先轉台語，模仿教育模組流程)
+        def _is_mostly_mandarin(t):
+            # 簡單判定：若無台語特有漢字/符號且是中文，則嘗試翻譯
+            taigi_markers = ["嘅","哋","冇","係","乜","啦","咩","啫","㗎","呢","咗","喺","度","領","閣","咧","毋","袂","ê"]
+            for m in taigi_markers:
+                if m in t: return False
+            return True
+
+        processed_text = text
+        if _is_mostly_mandarin(text):
+            try:
+                # 呼叫翻譯 API (zh2nan)
+                # 使用已有邏輯，假設 API Key 正確
+                headers = {"x-api-key": TAIGI_TRANSLATE_API_KEY, "Content-Type":"application/json"}
+                payload = {"inputText": text, "inputLan": "zhtw", "outputLan": "tw"}
+                r = _post_with_fallback(TAIGI_TRANSLATE_ENDPOINTS, headers, payload, timeout=10)
+                if r.status_code == 200:
+                    jr = r.json()
+                    if jr.get("outputText"):
+                        processed_text = jr["outputText"]
+                        print(f"[Taigi] Translated: {text} -> {processed_text}")
+            except: pass
+
+        # Generate (Uses model6 by default)
+        path = generate_taigi_tts(processed_text)
         
-        # Play (Server Side)
+        # Play (Server Side + Web Broadcast)
         if path:
-            # If it comes from dedicated module (often wav or mp3), we use fx player
-            # But generate_taigi_tts now returns a file in UPLOAD_DIR
             taigi_play_wav_with_fx(path)
             
-            # Optional: Clean up if you don't want to keep broadcast files?
-            # But user said "Download", so maybe keep it.
-            # Let's keep it in UPLOAD_DIR.
-            
     except Exception as e:
-        text_area_insert(f"⚠️ 台語播報失敗：{e}", "TTS")
+        text_area_insert(f"⚠️ 台語廣播失敗：{e}", "TTS")
 
 @app.route('/taigi/say', methods=['POST'])
 def api_taigi_say():
@@ -6153,7 +6108,7 @@ def handle_msg(text, addr):
 
         text_area_insert(f"氣象播報內容：{text}")
         
-        # [Fix] Enqueue for playback and return
+        # [Fix] Enqueue for playback and return (Restore Chime for weather as requested)
         if not (stop_playback_event.is_set() or voice_muted):
              enqueue_drop_old(speech_queue, text)
         return
@@ -6522,22 +6477,20 @@ def handle_msg(text, addr):
 
             pass
 
+    if text.startswith("SetLang:"):
+        lang = text[8:].strip()
+        if lang in lang_code2label:
+            ui_safe(lang_label_var.set, lang_code2label[lang]); update_voice(); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
+        elif lang in [lab for lab, _ in LANG_OPTIONS]:
+            ui_safe(lang_label_var.set, lang); update_voice(); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
         return
 
-
-
-    if text.startswith("SetLang:"):
-
-        lang = text[8:].strip()
-
-        if lang in lang_code2label:
-
-            ui_safe(lang_label_var.set, lang_code2label[lang]); update_voice(); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
-
-        elif lang in [lab for lab, _ in LANG_OPTIONS]:
-
-            ui_safe(lang_label_var.set, lang); update_voice(); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
-
+    if text.startswith("SetGender:"):
+        g = text[10:].strip()
+        if g in gender_code2label:
+            ui_safe(gender_label_var.set, gender_code2label[g]); update_voice(); save_to_csv(f"SetGender:{g}", sender, ip=sender_ip)
+        elif g in gender_label2code:
+            ui_safe(gender_label_var.set, g); update_voice(); save_to_csv(f"SetGender:{g}", sender, ip=sender_ip)
         return
 
     if text.startswith("SetMeloSpeaker:"):
@@ -6545,8 +6498,7 @@ def handle_msg(text, addr):
         spk = text[15:].strip()
         MELO_SPEAKER = spk
         STATE["melo_speaker"] = spk
-        _save_voice_config()
-        text_area_insert(f" Melo 配音員設為 {spk}（來自 {sender}）")
+        text_area_insert(f" Melo 配音员设为 {spk}（来自 {sender}）")
         return
 
     if text.startswith("SetMeloEnabled:"):
@@ -6554,9 +6506,8 @@ def handle_msg(text, addr):
         val = text[15:].strip().lower()
         USE_MELO_TTS = (val == "true")
         STATE["melo_enabled"] = USE_MELO_TTS
-        _save_voice_config()
         status_msg = "已啟用" if USE_MELO_TTS else "已停用"
-        text_area_insert(f" Melo AI 語音 {status_msg}（來自 {sender}）")
+        text_area_insert(f" Melo AI 语系 {status_msg}（来自 {sender}）")
         return
 
 
@@ -10867,12 +10818,16 @@ def setrate():
 
 
 
+    return ("", 204)
+
 @app.route("/setlang", methods=["POST"])
-
 def setlang():
-
     lang = request.form.get("lang","zh-TW"); threading.Thread(target=handle_msg, args=(f"SetLang:{lang}", (_client_ip_from_request(), "Web")), daemon=True).start()
+    return ("", 204)
 
+@app.route("/setgender", methods=["POST"])
+def setgender():
+    g = request.form.get("gender","female"); threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
     return ("", 204)
 
 
@@ -14563,105 +14518,6 @@ gender_combo.grid(row=0, column=3, padx=6, pady=16)
 
 
 
-# Persistence for Voice Settings
-
-VOICE_CONFIG_PATH = Path(DATA_DIR) / "voice_config.json"
-
-
-
-def _save_voice_config():
-
-    """Save persistent voice settings."""
-
-    try:
-
-        data = {
-            "lang_label": lang_label_var.get(),
-            "gender_label": gender_label_var.get(),
-            "rate": rate_scale.get(),
-            "chime_enabled": CHIME_ENABLED,
-            "melo_speaker": MELO_SPEAKER,
-            "melo_enabled": USE_MELO_TTS
-        }
-
-        VOICE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-        VOICE_CONFIG_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    except Exception as e:
-
-        print(f"[Config] Save voice config failed: {e}")
-
-
-
-def _load_voice_config():
-
-    """Load persistent voice settings."""
-
-    try:
-
-        if VOICE_CONFIG_PATH.exists():
-
-            data = json.loads(VOICE_CONFIG_PATH.read_text(encoding="utf-8"))
-
-            l = data.get("lang_label")
-
-            g = data.get("gender_label")
-
-            r = data.get("rate")
-
-            
-
-            if l and l in lang_label2code:
-
-                lang_label_var.set(l)
-
-            if g and g in gender_label2code:
-
-                gender_label_var.set(g)
-
-            if r is not None:
-
-                try: rate_scale.set(int(r))
-
-                except: pass
-
-            
-
-            # Sync internal state
-
-            # update_voice() will be called by bind or manual call, but we want to trigger update without save loop
-
-            # actually calling update_voice() is fine as long as save is efficient
-
-            update_voice()
-
-            _on_rate_change()
-
-            # Load chime setting
-            global CHIME_ENABLED
-            CHIME_ENABLED = data.get("chime_enabled", True)
-            try:
-                if 'chime_var' in globals():
-                    ui_safe(lambda: chime_var.set(CHIME_ENABLED))
-            except: pass
-
-            # Load Melo Speaker
-            global MELO_SPEAKER, USE_MELO_TTS
-            # Try new key -> default
-            MELO_SPEAKER = data.get("melo_speaker", "ZH")
-            STATE["melo_speaker"] = MELO_SPEAKER
-            
-            # Default enabled checked from new -> old -> True
-            USE_MELO_TTS = data.get("melo_enabled", False)
-                 
-            STATE["melo_enabled"] = USE_MELO_TTS
-
-            print(f"[Config] Loaded voice settings: {l}, {g}, {r}, Chime={CHIME_ENABLED}, MeloSpk={MELO_SPEAKER}, MeloEnabled={USE_MELO_TTS}")
-
-    except Exception as e:
-
-        print(f"[Config] Load voice config failed: {e}")
 
 
 
@@ -14677,11 +14533,7 @@ def update_voice(event=None):
 
         STATE["lang"] = voice_language; STATE["gender"] = voice_gender
 
-        
-
-        # Save on change
-
-        _save_voice_config()
+        pass
 
     except Exception:
 
@@ -14763,9 +14615,6 @@ rate_scale.configure(command=lambda v: (_on_rate_change(v), None))
 
 
 
-# Load config initially
-
-root.after(500, _load_voice_config)
 
 
 
