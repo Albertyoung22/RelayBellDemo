@@ -407,62 +407,8 @@ from pathlib import Path
 from functools import wraps
 
 from urllib.parse import quote
-
-try:
-    import pygame
-    _HAS_PYGAME = True
-except ImportError:
-    # pygame 不可用（如 Render/Linux 無頭模式）
-    # 音訊已重導向至前端，這裡只需要一個 stub 讓程式不崩潰
-    import types as _ptypes
-    pygame = _ptypes.ModuleType("pygame")
-    class _PMixer:
-        class music:
-            @staticmethod
-            def set_volume(v): pass
-            @staticmethod
-            def stop(): pass
-            @staticmethod
-            def load(f): pass
-            @staticmethod
-            def play(): pass
-            @staticmethod
-            def pause(): pass
-            @staticmethod
-            def unpause(): pass
-            @staticmethod
-            def unload(): pass
-            @staticmethod
-            def get_busy(): return False
-        class Channel:
-            def __init__(self, *a): pass
-            def play(self, *a): pass
-            def stop(self): pass
-            def get_busy(self): return False
-        class Sound:
-            def __init__(self, *a): pass
-            def set_volume(self, v): pass
-        @staticmethod
-        def quit(): pass
-        @staticmethod
-        def init(): pass
-        @staticmethod
-        def pre_init(*a): pass
-        @staticmethod
-        def set_num_channels(n): pass
-    pygame.mixer = _PMixer()
-    pygame.mixer.Channel = _PMixer.Channel
-    pygame.mixer.Sound = _PMixer.Sound
-
-    class _PDisplay:
-        @staticmethod
-        def set_mode(*a, **kw): pass
-
-    pygame.display = _PDisplay()
-    pygame.error = Exception
-    pygame.NOFRAME = 0
-    _HAS_PYGAME = False
-    print("[WARN] pygame not available – audio redirected to frontend WebSocket only")
+_HAS_PYGAME = False
+print("[WARN] Local audio disabled. Audio fully redirected to frontend WebSocket only.")
 
 import yt_dlp
 
@@ -2670,39 +2616,7 @@ WEB_WS_LOCK = threading.Lock()
 
 # ===============================
 
-# --- 在 pygame.mixer.init() 之前加入 ---
-
-try:
-
-    pygame.mixer.quit()
-
-except Exception:
-
-    pass
-
-# 44.1kHz/16bit/stereo，buffer 稍微大一點，避免短音被吃尾
-
-pygame.mixer.pre_init(44100, -16, 2, 1024)
-
-
-
-try:
-
-    pygame.mixer.init()
-
-except Exception:
-
-    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
-
-    try:
-
-        pygame.mixer.init()
-
-        print("[audio] pygame mixer using dummy driver")
-
-    except Exception as e:
-
-        print("[audio] pygame mixer init failed:", e)
+# Local audio is removed. Mixers disabled.
 
 
 
@@ -3433,37 +3347,9 @@ def relay_force_off():
 
 # ===============================
 
-# ---- FX（前導/結束音）專用 ----
-
-pygame.mixer.set_num_channels(8)              # 確保有多一點通道
-
-FX_CHANNEL = pygame.mixer.Channel(1)          # 0給系統用，1當FX通道
-
-SOUND_CACHE = {}
+# Local FX sound removed
 
 
-
-def _get_fx_sound(path):
-
-    p = resource_path(path)
-
-    if not os.path.exists(p):
-
-        raise FileNotFoundError(p)
-
-    if p not in SOUND_CACHE:
-
-        snd = pygame.mixer.Sound(p)           # 建議把提示音改成 WAV/OGG，最穩
-
-        snd.set_volume(STATE["volume"]/100.0)
-
-        SOUND_CACHE[p] = snd
-
-    else:
-
-        SOUND_CACHE[p].set_volume(STATE["volume"]/100.0)
-
-    return SOUND_CACHE[p]
 
 
 
@@ -3518,14 +3404,6 @@ def set_volume(level: int):
     except:
 
         return
-
-    try:
-
-        pygame.mixer.music.set_volume(VOLUME_LEVEL/100.0)
-
-    except:
-
-        pass
 
     STATE["volume"] = VOLUME_LEVEL
 
@@ -3617,14 +3495,7 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
         if not os.path.isabs(real_path):
             real_path = resource_path(real_path)
             
-        # 1. Start Local Playback (Pygame)
-        if _HAS_PYGAME:
-            try:
-                # Use Sound for EVERYTHING (more stable than music mixer)
-                snd = _get_fx_sound(real_path)
-                FX_CHANNEL.play(snd)
-            except Exception as e:
-                print(f"[play_sound] Local play failed: {e}")
+        # 1. Local Playback Removed - Fully Web-based now
 
         # 2. Progress Calculation
         if not duration_estimate or duration_estimate <= 0:
@@ -3657,9 +3528,6 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
         while t < duration_estimate:
             # Check for interrupt
             if stop_playback_event.is_set() and not ignore_interrupt:
-                if _HAS_PYGAME:
-                   # music mixer is not used, so only stop channel
-                   FX_CHANNEL.stop()
                 stop_web_audio()
                 break
             time.sleep(0.1)
