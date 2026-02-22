@@ -184,7 +184,7 @@
         connectedCallback() {
           this.render();
           this.bind();
-          this.loadLocalSettings(); // 🆕 Load local preference
+          // this.loadLocalSettings(); // Removed memory per user request
           this.fetchRelayConfig();  // 🆕 Sync relay config
           this.fetchChimeConfig();  // 🆕 Sync chime config
           this.refreshState();
@@ -539,18 +539,19 @@
                       <!-- AI Button (Direct) -->
                       <button id="btn-ai-direct" style="background:linear-gradient(45deg, #1e7bd8, #8a2be2); border:none; color:white;" title="輸入關鍵字後，直接點此按鈕">✨ AI 直接生成</button>
 
-                      <!-- 🆕 Taigi 快捷：先翻成台文 + 下載台語語音檔 + 講台語 -->
-                      <button id="btn-taigi-translate">🈶 先翻成台文</button>
-                      <button id="btn-taigi-say" class="secondary">🗣️ 講台語</button>
-                      <button id="btn-taigi-preview">🎧 試聽/下載</button>
-
-                      <button id="btn-weather-text" class="secondary" style="margin-left:4px;">🌥️ 氣象文字</button>
+                      <button id="btn-weather-text" class="secondary">🌥️ 氣象文字</button>
                     </div>
-                    <!-- 🆕 台語語音試聽區 -->
-                    <div id="taigi-audio-preview" class="row tight" style="display:none;margin-top:4px;align-items:center;gap:8px;">
-                      <span class="hint">語音試聽：</span>
-                      <a id="taigi-download-link" href="#" target="_blank" class="mono"></a>
-                      <audio id="taigi-audio-player" controls style="flex:1;max-width:260px;"></audio>
+
+                    <!-- Taigi / TTS Result Module (Imitating taigi_edu.html) -->
+                    <div id="taigi-audio-module" class="result-area" style="display:none; background: #ecfdf5; border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-top: 10px;">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #064e3b; margin-bottom: 8px;">🔊 台語廣播素材：</div>
+                        <div id="taigi-text-result" style="font-family: serif; font-size: 1.1rem; background:white; padding:8px; border-radius:4px; border:1px solid #10b981; margin-bottom:10px;"></div>
+                        <audio id="taigi-preview-player" style="width:100%; height:32px;" controls></audio>
+                        <div style="display:flex; gap:10px; margin-top:10px;">
+                            <a id="taigi-download-link" href="#" download class="download-link" style="background:#059669; color:white; text-decoration:none; padding:6px 12px; border-radius:4px; font-size:0.85rem; flex:1; text-align:center;">💾 下載 MP3 素材</a>
+                            <button id="btn-taigi-broadcast" class="primary" style="flex:1; padding:6px 12px; font-size:0.85rem;">📣 立即廣播</button>
+                            <button class="ghost" style="font-size: 0.85rem;" onclick="this.getRootNode().host.shadowRoot.querySelector('#taigi-audio-module')?.style.display='none'">✖ 關閉</button>
+                        </div>
                     </div>
                     <!-- 🆕 即時錄音廣播 -->
                     <div class="btns" style="margin-top:12px; border-top:1px dashed #d6e3f7; padding-top:12px;">
@@ -600,9 +601,19 @@
                     <div>
                       <div class="row"><input id="mp3url" type="text" placeholder="貼上 MP3 或 YouTube 連結…" /></div>
                       <div class="btns">
-                        <button id="btn-mp3url" class="primary">▶️ 播放音訊</button>
+                        <button id="btn-mp3url" class="primary">▶️ 廣播音訊</button>
+                          <button id="btn-mp3-preview" class="secondary">🎧 本機試讀</button>
                           <button id="btn-ytfs">🎬 全螢幕播放（YouTube）</button>
                           <button id="btn-ytclose" class="ghost">⏹ 關閉全螢幕</button>
+                        </div>
+                        
+                        <!-- MP3 Preview Module -->
+                        <div id="mp3-preview-module" style="display:none; margin-top:8px; padding:8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px;">
+                           <div style="font-size:0.75rem; font-weight:bold; margin-bottom:4px;">🎧 本機試讀中...</div>
+                           <audio id="mp3-preview-player" style="width:100%; height:30px;" controls></audio>
+                           <div style="text-align:right; margin-top:4px;">
+                              <button class="ghost" style="font-size:10px;" onclick="this.getRootNode().host.shadowRoot.querySelector('#mp3-preview-module').style.display='none'">✖ 關閉預覽</button>
+                           </div>
                         </div>
                       </div>
                       <div>
@@ -666,27 +677,7 @@
                 <div class="right-col">
                   <div class="card">
                     <h3>🗣️ 語音設定</h3>
-                    <div class="row">
-                      <div class="select-inline">
-                        <label class="small">語言</label>
-                        <select id="lang">
-                          <option value="zh-TW">中文（台灣）</option>
-                          <option value="en-US">英文（美國）</option>
-                          <option value="ja-JP">日文（日本）</option>
-                          <option value="ko-KR">韓文（韓國）</option>
-                          <option value="vi-VN">越南語</option>
-                          <option value="km-KH">柬埔寨/高棉</option>
-                          <option value="lo-LA">寮國</option>
-                          <option value="th-TH">泰國</option>
-                          <option value="my-MM">緬甸</option>
-                          <option value="ms-MY">馬來西亞</option>
-                          <option value="id-ID">印尼語</option>
-                          <option value="tl-PH">菲律賓</option>
-                          <option value="nan-TW">台語</option>
-                        </select>
-                        <button id="btn-lang" style="display:none"></button>
-                      </div>
-                    </div>
+                    <input type="hidden" id="lang" value="zh-TW" />
                     <div class="row">
                       <div class="select-inline">
                         <label class="small">聲別</label>
@@ -868,24 +859,18 @@
 
         bind() {
           const $ = (s) => this.shadowRoot.querySelector(s);
-          $("#btn-say").addEventListener("click", () => this.sayText($("#msg").value.trim()));
+          const _safeBind = (id, evt, fn) => {
+            const el = $(id);
+            if (el) el.addEventListener(evt, fn);
+          };
+
+          _safeBind("#btn-say", "click", () => this.sayText($("#msg").value.trim()));
 
           // 🆕 Chime Toggle
-          const chkChime = $("#chkChime");
-          if (chkChime) {
-            chkChime.addEventListener("change", (e) => {
-              this.setChimeConfig(e.target.checked);
-            });
-          }
-
-
-
+          _safeBind("#chkChime", "change", (e) => this.setChimeConfig(e.target.checked));
 
           // 🆕 錄音廣播 (Start/Stop Toggle)
-          const btnRec = $("#btn-record-toggle");
-          if (btnRec) {
-            btnRec.addEventListener("click", () => this.toggleRecording());
-          }
+          _safeBind("#btn-record-toggle", "click", () => this.toggleRecording());
 
           // 🆕 按住說話 (Hold to Talk) - 實現遠端麥克風
           const btnHold = $("#btn-hold-talk");
@@ -914,35 +899,43 @@
           }
 
           // 🆕 錄音預覽操作
-          $("#btn-rec-send").addEventListener("click", () => this.sendCurrentRecording());
-          $("#btn-rec-cancel").addEventListener("click", () => this.cancelCurrentRecording());
+          _safeBind("#btn-rec-send", "click", () => this.sendCurrentRecording());
+          _safeBind("#btn-rec-cancel", "click", () => this.cancelCurrentRecording());
 
-          // 🆕 台語快捷鍵
-          const btnTaigiTrans = $("#btn-taigi-translate");
-          if (btnTaigiTrans) btnTaigiTrans.addEventListener("click", () => this.taigiTranslate());
-          // btn-taigi-say: 講台語
-          const btnTaigiSay = $("#btn-taigi-say");
-          if (btnTaigiSay) btnTaigiSay.addEventListener("click", () => this.sayTaigi(true));
-          // btn-taigi-preview: 試聽
-          const btnTaigiPreview = $("#btn-taigi-preview");
-          if (btnTaigiPreview) btnTaigiPreview.addEventListener("click", () => this.downloadTaigi());
+          _safeBind("#btn-taigi-broadcast", "click", () => {
+            const txt = $("#taigi-text-result").textContent;
+            if (txt) this.sayTaigi(true, txt);
+          });
+
+          // MP3 Preview
+          _safeBind("#btn-mp3-preview", "click", () => {
+            const url = $("#mp3url").value.trim();
+            if (!url) return alert("請先輸入連結");
+            const player = $("#mp3-preview-player");
+            const mod = $("#mp3-preview-module");
+
+            // Handle relative paths for local files using proxy
+            let finalUrl = url;
+            if (!url.startsWith("http")) {
+              finalUrl = (typeof API_BASE !== 'undefined' ? API_BASE : '') + "/api/audio_proxy?path=" + encodeURIComponent(url);
+            }
+
+            player.src = finalUrl;
+            mod.style.display = "block";
+            player.play().catch(e => alert("預覽失敗: " + e.message));
+          });
 
 
           // 🆕 AI Button (Direct)
-          const btnAiDirect = $("#btn-ai-direct");
+          _safeBind("#btn-ai-direct", "click", () => this.aiDirectGen());
 
           // 🆕 Auto Relay Checkbox
-          const chkAutoRelay = $("#chkAutoRelay");
-          if (chkAutoRelay) {
-            chkAutoRelay.addEventListener("change", (e) => {
-              this.setRelayConfig(e.target.checked);
-            });
-          }
-          if (btnAiDirect) btnAiDirect.addEventListener("click", () => this.aiDirectGen());
+          _safeBind("#chkAutoRelay", "change", (e) => {
+            this.setRelayConfig(e.target.checked);
+          });
 
           // 🆕 氣象文字
-          $("#btn-weather-text").addEventListener("click", async () => {
-            const $ = (s) => this.shadowRoot.querySelector(s);
+          _safeBind("#btn-weather-text", "click", async () => {
             const txt = $("#msg");
             try {
               txt.value = "正在取得氣象資料...";
@@ -1016,50 +1009,54 @@
             });
           }
 
-          $("#btn-translate-simple").addEventListener("click", () => this.translateSimple());
+          _safeBind("#btn-translate-simple", "click", () => this.translateSimple());
 
           // 🆕 智慧播放（YouTube 下載偵測）
-          $("#btn-mp3url").addEventListener("click", () => this.playMP3OrYT());
+          _safeBind("#btn-mp3url", "click", () => this.playMP3OrYT());
 
-          $("#btn-ytfs").addEventListener("click", () => {
+          _safeBind("#btn-ytfs", "click", () => {
             const url = $("#mp3url").value.trim();
             if (!url) return;
             this.postForm("/cmd", { cmd: "YTFull:" + url });
           });
-          $("#btn-ytclose").addEventListener("click", () => this.postForm("/cmd", { cmd: "YTClose" }));
+          _safeBind("#btn-ytclose", "click", () => this.postForm("/cmd", { cmd: "YTClose" }));
 
-          $("#btn-upload").addEventListener("click", () => this.upload());
-          $("#btn-file-go").addEventListener("click", () => this.fileAction());
+          _safeBind("#btn-upload", "click", () => this.upload());
+          _safeBind("#btn-file-go", "click", () => this.fileAction());
 
-          $("#btn-mp3pause").addEventListener("click", () => this.postForm("/cmd", { cmd: "MP3Pause" }));
-          $("#btn-mp3resume").addEventListener("click", () => this.postForm("/cmd", { cmd: "MP3Resume" }));
-          $("#btn-mp3stop").addEventListener("click", () => this.postForm("/cmd", { cmd: "MP3Stop" }));
+          _safeBind("#btn-mp3pause", "click", () => this.postForm("/cmd", { cmd: "MP3Pause" }));
+          _safeBind("#btn-mp3resume", "click", () => this.postForm("/cmd", { cmd: "MP3Resume" }));
+          _safeBind("#btn-mp3stop", "click", () => this.postForm("/cmd", { cmd: "MP3Stop" }));
 
           this.shadowRoot.querySelectorAll('[data-cmd]').forEach(btn => {
-            btn.addEventListener("click", () => this.postForm("/cmd", { cmd: btn.getAttribute("data-cmd") }));
+            btn.addEventListener("click", () => {
+              const cmd = btn.getAttribute("data-cmd");
+              console.log("[UI] Sending Component Command:", cmd);
+              this.postForm("/cmd", { cmd: cmd });
+            });
           });
 
-          $("#lang").addEventListener("change", () => {
-            this.saveLocalSettings();
+          _safeBind("#lang", "change", () => {
+            this.postForm("/setlang", { lang: $("#lang").value });
           });
-          $("#gender").addEventListener("change", () => {
-            this.saveLocalSettings();
+          _safeBind("#gender", "change", () => {
+            this.postForm("/setgender", { gender: $("#gender").value });
           });
 
 
-          $("#rate").addEventListener("input", (e) => { $("#rateVal").textContent = Number(e.target.value) + "%"; });
-          $("#rate").addEventListener("change", (e) => this.postForm("/setrate", { rate: Number(e.target.value) + "%" }));
+          _safeBind("#rate", "input", (e) => { $("#rateVal").textContent = Number(e.target.value) + "%"; });
+          _safeBind("#rate", "change", (e) => this.postForm("/setrate", { rate: Number(e.target.value) + "%" }));
 
-          $("#autoUnmute").addEventListener("change", (e) => this.postForm("/autounmute", {
+          _safeBind("#autoUnmute", "change", (e) => this.postForm("/autounmute", {
             on: e.target.checked ? "1" : "0"
           }));
 
-          $("#volume").addEventListener("input", (e) => $("#volVal").textContent = `${Number(e.target.value)}%`);
-          $("#volume").addEventListener("change", (e) => this.postForm("/setvol", { vol: String(Number(e.target.value)) }));
-          $("#btn-volup").addEventListener("click", () => this.postForm("/volup", {}));
-          $("#btn-voldown").addEventListener("click", () => this.postForm("/voldown", {}));
-          $("#btn-mute").addEventListener("click", () => this.postForm("/cmd", { cmd: "Mute" }));
-          $("#btn-unmute").addEventListener("click", () => this.postForm("/cmd", { cmd: "Unmute" }));
+          _safeBind("#volume", "input", (e) => $("#volVal").textContent = `${Number(e.target.value)}%`);
+          _safeBind("#volume", "change", (e) => this.postForm("/setvol", { vol: String(Number(e.target.value)) }));
+          _safeBind("#btn-volup", "click", () => this.postForm("/volup", {}));
+          _safeBind("#btn-voldown", "click", () => this.postForm("/voldown", {}));
+          _safeBind("#btn-mute", "click", () => this.postForm("/cmd", { cmd: "Mute" }));
+          _safeBind("#btn-unmute", "click", () => this.postForm("/cmd", { cmd: "Unmute" }));
 
           const copyBtn = $("#btnCopyYtDl");
           if (copyBtn) {
@@ -1392,20 +1389,6 @@
           });
         }
 
-        // 🆕 Local Settings Helpers
-        loadLocalSettings() {
-          const lang = localStorage.getItem("relaybell_lang");
-          const gender = localStorage.getItem("relaybell_gender");
-          const $ = (s) => this.shadowRoot.querySelector(s);
-          if (lang && $("#lang")) $("#lang").value = lang;
-          if (gender && $("#gender")) $("#gender").value = gender;
-        }
-
-        saveLocalSettings() {
-          const $ = (s) => this.shadowRoot.querySelector(s);
-          if ($("#lang")) localStorage.setItem("relaybell_lang", $("#lang").value);
-          if ($("#gender")) localStorage.setItem("relaybell_gender", $("#gender").value);
-        }
 
         async sayText(text) {
           if (!text) return;
@@ -1742,7 +1725,6 @@
               const newLang = langMap[tgt] || "zh-TW";
               if ($("#lang")) {
                 $("#lang").value = newLang;
-                this.saveLocalSettings();
                 // Sync to Backend (for Desktop UI / Global State)
                 this.postForm("/cmd", { cmd: "SetLang:" + newLang });
               }
@@ -1752,88 +1734,52 @@
           }
         }
 
-        async taigiTranslate() {
+
+        async downloadTaigi(overrideText) {
           const $ = (s) => this.shadowRoot.querySelector(s);
-          const txt = ($("#msg").value || "").trim();
-          if (!txt) {
-            alert("請先輸入文字");
-            return;
-          }
-          const previewBox = $("#transPreview");
-          const previewText = $("#transPreviewText");
-          previewText.textContent = "⌛ 台語翻譯中...";
-          previewBox.style.display = "block";
-
-          try {
-            const src = this.detectLang(txt);
-
-            const direction = (src === "zh") ? "zh2nan" : "nan2zh";
-            const j = await this.postJSON("/taigi/translate", { text: txt, direction });
-            if (j && j.text) {
-              previewText.textContent = j.text;
-              // Sync language to Taigi if successful
-              const langSel = $("#lang");
-              if (langSel) {
-                langSel.value = "nan-TW";
-                langSel.dispatchEvent(new Event("change"));
-              }
-            } else {
-              previewBox.style.display = "none";
-              alert("台語翻譯無結果");
-            }
-          } catch (e) {
-            previewBox.style.display = "none";
-            alert("台語翻譯失敗：" + e.message);
-          }
-        }
-
-        async sayTaigi(playOnly) {
-          const $ = (s) => this.shadowRoot.querySelector(s);
-          // Try preview text first, then the main message box
-          const previewText = ($("#transPreviewText").textContent || "").trim();
-          let txt = (previewText && $("#transPreview").style.display !== "none") ? previewText : ($("#msg").value || "").trim();
-
-          if (!txt) return alert("請先輸入文字");
+          let txt = overrideText || ($("#msg").value || "").trim();
+          if (!txt) return;
           const gsel = $("#gender");
           const g = (gsel && gsel.value === "male") ? "m" : "f";
           try {
-            // 🆕 Speed control
-            const rateVal = $("#rate") ? parseInt($("#rate").value, 10) : 0;
-            const speed = 1.0 + (rateVal / 100.0);
-            await this.postJSON("/taigi/say", { text: txt, gender: g, direction: "raw", play: true, speed: speed });
-          } catch (e) {
-            alert("台語播放失敗：" + e.message);
-          }
-        }
-
-        async downloadTaigi() {
-          const $ = (s) => this.shadowRoot.querySelector(s);
-          let txt = ($("#msg").value || "").trim();
-          if (!txt) return alert("請先輸入文字");
-          const gsel = $("#gender");
-          const g = (gsel && gsel.value === "male") ? "m" : "f";
-          try {
-            // 🆕 Speed control
             const rateVal = $("#rate") ? parseInt($("#rate").value, 10) : 0;
             const speed = 1.0 + (rateVal / 100.0);
             const j = await this.postJSON("/taigi/say", { text: txt, gender: g, direction: "raw", play: false, speed: speed });
-            const wrap = this.shadowRoot.querySelector("#taigi-audio-preview");
             const link = $("#taigi-download-link");
-            const audio = $("#taigi-audio-player");
-            if (!wrap || !link || !audio) return;
+            const audio = $("#taigi-preview-player");
+            if (!link || !audio) return;
 
-            const url = j.url || (j.file ? ("/taigi/audio/" + encodeURIComponent(j.file)) : "");
-            if (!url) {
-              alert("後端沒有提供語音網址");
-              return;
-            }
+            const url = (typeof API_BASE !== 'undefined' ? API_BASE : '') + (j.url || (j.file ? ("/taigi/audio/" + encodeURIComponent(j.file)) : ""));
+            if (!url) return;
 
             link.href = url;
-            link.textContent = j.file || "下載台語語音檔";
+            link.download = `taigi_${Date.now()}.wav`;
             audio.src = url;
-            wrap.style.display = "flex";
+            // audio.play(); // Don't auto-play on background synthesis
           } catch (e) {
-            alert("台語語音產生失敗：" + e.message);
+            console.error("Taigi preview error:", e);
+          }
+        }
+
+        async sayTaigi(playOnly, overrideText) {
+          const $ = (s) => this.shadowRoot.querySelector(s);
+          let txt = overrideText || ($("#msg").value || "").trim();
+          if (!txt) return alert("請先輸入文字");
+
+          const gsel = $("#gender");
+          const g = (gsel && gsel.value === "male") ? "m" : "f";
+          try {
+            const rateVal = $("#rate") ? parseInt($("#rate").value, 10) : 0;
+            const speed = 1.0 + (rateVal / 100.0);
+            await this.postJSON("/taigi/say", { text: txt, gender: g, direction: "raw", play: true, speed: speed });
+            if (playOnly) {
+              // Also show the result module if not already shown
+              $("#taigi-text-result").textContent = txt;
+              $("#taigi-audio-module").style.display = "block";
+              this.downloadTaigi(txt);
+            }
+          } catch (e) {
+            alert("台語播放失敗：" + e.message);
           }
         }
         /* ===== /翻譯 ===== */
@@ -1863,7 +1809,9 @@
               : "&#039;"
           }[m]));
         }
-      } if (!customElements.get('udp-console')) {
+      }
+
+      if (!customElements.get('udp-console')) {
         customElements.define("udp-console", UDPConsole);
       }
     })();
@@ -2199,12 +2147,21 @@
 
         // NEW: Local Diagnostic Test
         window.testLocalAudio = () => {
-          console.log("[AudioWS] Test starting...");
-          const testUrl = "https://www.soundjay.com/buttons/button-1.mp3";
+          console.log("[AudioWS] Test starting using local proxy...");
+          // 使用伺服器內部的檔案測試，以驗證 Proxy 權限與連線
+          const testUrl = (typeof API_BASE !== 'undefined' && API_BASE ? API_BASE : '') + "/api/audio_proxy?path=ClassStart.mp3";
+          console.log("[AudioWS] Requesting test file:", testUrl);
+
           const testPlayer = new Audio(testUrl);
           testPlayer.play()
-            .then(() => alert("本機音訊測試成功！如果您聽得到聲音，表示瀏覽器播音正常。"))
-            .catch(err => alert("播音失敗：" + err.message + "\n請點擊頁面上方藍色按鈕授權。"));
+            .then(() => {
+              console.log("[AudioWS] Test sound played successfully!");
+              alert("✅ 測試成功！瀏覽器已獲得播音授權，且伺服器 Proxy 通訊正常。\n\n如果您按下其他按鈕沒聲音，請確認該 MP3 是否已上傳至伺服器。");
+            })
+            .catch(err => {
+              console.error("[AudioWS] Test sound failed:", err);
+              alert("❌ 播音失敗！\n原因：" + err.message + "\n請求網址：" + testUrl + "\n\n1. 請確認右下角是否顯示 ON。\n2. 請點擊頁面藍色按鈕「🔊 點擊啟用背景廣播接收」。\n3. 檢查伺服器是否正在執行。");
+            });
         };
         ws.onclose = () => {
           status.textContent = "Audio Receiver: DISCONNECTED";
