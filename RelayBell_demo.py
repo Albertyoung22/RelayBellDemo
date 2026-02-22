@@ -3633,38 +3633,56 @@ def broadcast_web_audio(filename, duration=0):
                 WEB_WS_CLIENTS.remove(d)
 
 def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
-    print(f"[Speaker] 模擬播放: {filename}")
+    print(f"[Speaker] 播放音訊: {filename}")
     try:
-        # 計算時長
+        # Resolve real path
+        real_path = filename
+        if not os.path.isabs(real_path):
+            real_path = resource_path(real_path)
+            
+        # 1. Start Local Playback (Pygame)
+        if _HAS_PYGAME:
+            try:
+                if real_path.lower().endswith(".mp3"):
+                    pygame.mixer.music.load(real_path)
+                    pygame.mixer.music.play()
+                else:
+                    snd = _get_fx_sound(real_path)
+                    FX_CHANNEL.play(snd)
+            except Exception as e:
+                print(f"[play_sound] Local play failed: {e}")
+
+        # 2. Progress Calculation
         if not duration_estimate or duration_estimate <= 0:
             try:
-                if filename.lower().endswith(".mp3"):
+                if real_path.lower().endswith(".mp3"):
                     try:
                         from mutagen.mp3 import MP3
-                        duration_estimate = MP3(filename).info.length
-                    except Exception as e:
-                        print(f"[play_sound] Mutagen failed for {filename}: {e}")
-                        duration_estimate = 3.5
-                elif filename.lower().endswith(".wav"):
+                        duration_estimate = MP3(real_path).info.length
+                    except: duration_estimate = 3.5
+                elif real_path.lower().endswith(".wav"):
                     import wave
-                    with wave.open(filename, 'rb') as wf:
+                    with wave.open(real_path, 'rb') as wf:
                         duration_estimate = wf.getnframes() / float(wf.getframerate())
                 else:
                     duration_estimate = 2.0
             except:
                 duration_estimate = 3.0
         
-        # Ensure minimum duration for broadcast
         if duration_estimate < 0.5: duration_estimate = 0.5
         
-        # 廣播到前端
+        # 3. Web Broadcast
         broadcast_web_audio(filename, duration_estimate)
         
+        # 4. Progress Loop
         ui_safe(_set_progress, 0); STATE["progress"] = 0
         t = 0
-        # 模擬播放時長
         while t < duration_estimate:
+            # Check for interrupt
             if stop_playback_event.is_set() and not ignore_interrupt:
+                if _HAS_PYGAME:
+                   pygame.mixer.music.stop()
+                   FX_CHANNEL.stop()
                 stop_web_audio()
                 break
             time.sleep(0.1)
@@ -3673,7 +3691,7 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
             ui_safe(_set_progress, percent); STATE["progress"] = percent
             
         ui_safe(_set_progress, 100); STATE["progress"] = 100
-        print(f"[Speaker] 模擬完成: {filename}")
+        print(f"[Speaker] 播放完成: {filename}")
     except Exception as e:
         print(f"[RedirAudio] Play error: {e}")
 
