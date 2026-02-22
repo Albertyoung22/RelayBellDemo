@@ -3502,12 +3502,26 @@ def broadcast_web_audio(filename, duration=0):
     廣播音訊播放給所有 Web 用戶
     """
     print(f"[WebAudio] Broadcasting: {filename} ({duration}s)")
-    # 轉換成可存取的 URL
-    if filename.startswith("http"):
-        url = filename
-    else:
-        # 建構 API URL
-        url = f"/api/audio_proxy?path={quote(filename)}"
+    # [Optimization] Use relative paths for known directories to make URLs cleaner and more robust
+    rel_path = filename
+    try:
+        # Check if the path is relative to APP_DIR or UPLOAD_DIR
+        app_abs = os.path.abspath(APP_DIR)
+        up_abs = os.path.abspath(UPLOAD_DIR)
+        rec_abs = os.path.abspath(RECORD_DIR)
+        file_abs = os.path.abspath(filename)
+        
+        if file_abs.startswith(up_abs):
+            rel_path = "uploads/" + os.path.relpath(file_abs, up_abs).replace('\\', '/')
+        elif file_abs.startswith(rec_abs):
+            rel_path = "rec/" + os.path.relpath(file_abs, rec_abs).replace('\\', '/')
+        elif file_abs.startswith(app_abs):
+            rel_path = os.path.relpath(file_abs, app_abs).replace('\\', '/')
+    except:
+        pass
+
+    # 建構 API URL
+    url = f"/api/audio_proxy?path={quote(rel_path)}"
     
     base_name = os.path.basename(filename)
     
@@ -3541,8 +3555,9 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
                     try:
                         from mutagen.mp3 import MP3
                         duration_estimate = MP3(filename).info.length
-                    except ImportError:
-                        duration_estimate = 2.5 # 提示音通常不長
+                    except Exception as e:
+                        print(f"[play_sound] Mutagen error or missing: {e}")
+                        duration_estimate = 3.0 # Fallback
                 elif filename.lower().endswith(".wav"):
                     import wave
                     with wave.open(filename, 'rb') as wf:
@@ -3945,7 +3960,8 @@ def _really_play_mp3_file(path):
             play_fx(START_SOUND, ignore_interrupt=True)
             time.sleep(0.5)
 
-        play_sound(mp3_path, duration_estimate=10)
+        # [Fix] Don't hardcode duration, let play_sound calculate it
+        play_sound(mp3_path)
 
         # [Chime] Lead-out
         if CHIME_ENABLED and END_SOUND and os.path.isfile(END_SOUND) and not stop_playback_event.is_set():
