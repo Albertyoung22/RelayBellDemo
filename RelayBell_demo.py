@@ -1491,23 +1491,16 @@ def api_audio_proxy():
         if os.path.exists(cand):
             abs_path = cand
         else:
-            # 2. 針對 Linux/Render 的暴力搜尋 (不分大小寫且包含子目錄)
-            # 嘗試在 APP_DIR, UPLOAD_DIR, RECORD_DIR 下尋找檔名匹配的檔案
-            basename = os.path.basename(path).lower()
-            found = False
-            search_dirs = [APP_DIR, UPLOAD_DIR, RECORD_DIR, os.path.join(DATA_DIR, "temp_audio")]
-            
+            # 2. 針對已知的幾個位置直接尋找
+            basename = os.path.basename(path)
             for sdir in search_dirs:
                 if not os.path.exists(sdir): continue
-                for root_dir, dirs, files in os.walk(sdir):
-                    for f in files:
-                        if f.lower() == basename:
-                            abs_path = os.path.join(root_dir, f)
-                            found = True
-                            break
-                    if found: break
-                if found: break
-
+                cand = os.path.join(sdir, basename)
+                if os.path.exists(cand):
+                    abs_path = cand
+                    found = True
+                    break
+            
             if not found:
                 # 最後嘗試系統暫存
                 import tempfile
@@ -3612,12 +3605,9 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
         # 1. Start Local Playback (Pygame)
         if _HAS_PYGAME:
             try:
-                if real_path.lower().endswith(".mp3"):
-                    pygame.mixer.music.load(real_path)
-                    pygame.mixer.music.play()
-                else:
-                    snd = _get_fx_sound(real_path)
-                    FX_CHANNEL.play(snd)
+                # Use Sound for EVERYTHING (more stable than music mixer)
+                snd = _get_fx_sound(real_path)
+                FX_CHANNEL.play(snd)
             except Exception as e:
                 print(f"[play_sound] Local play failed: {e}")
 
@@ -3653,7 +3643,7 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
             # Check for interrupt
             if stop_playback_event.is_set() and not ignore_interrupt:
                 if _HAS_PYGAME:
-                   pygame.mixer.music.stop()
+                   # music mixer is not used, so only stop channel
                    FX_CHANNEL.stop()
                 stop_web_audio()
                 break
@@ -6368,16 +6358,13 @@ def handle_msg(text, addr):
 
 
     if text.strip() == "Bell:ClassStart":
-
-        auto_unmute_if_needed(); _interrupt_current_playback(); play_mp3_file("ClassStart.mp3"); text_area_insert(" 上課鈴播放 ClassStart.mp3"); save_to_csv("Bell:ClassStart", sender, ip=sender_ip); return
+        auto_unmute_if_needed(); play_mp3_file("ClassStart.mp3"); text_area_insert(" 上課鈴播放 ClassStart.mp3"); save_to_csv("Bell:ClassStart", sender, ip=sender_ip); return
 
     if text.strip() == "Bell:ClassEnd":
-
-        auto_unmute_if_needed(); _interrupt_current_playback(); play_mp3_file("ClassEnd.mp3"); text_area_insert(" 下課鈴播放 ClassEnd.mp3"); save_to_csv("Bell:ClassEnd", sender, ip=sender_ip); return
+        auto_unmute_if_needed(); play_mp3_file("ClassEnd.mp3"); text_area_insert(" 下課鈴播放 ClassEnd.mp3"); save_to_csv("Bell:ClassEnd", sender, ip=sender_ip); return
 
     if text.strip() == "Bell:EarthquakeAlarm":
-
-        auto_unmute_if_needed(); _interrupt_current_playback(); play_mp3_file("justearthquakeAlarm.mp3"); text_area_insert(" 地震警報播放 justearthquakeAlarm.mp3"); save_to_csv("Bell:EarthquakeAlarm", sender, ip=sender_ip); return
+        auto_unmute_if_needed(); play_mp3_file("justearthquakeAlarm.mp3"); text_area_insert(" 地震警報播放 justearthquakeAlarm.mp3"); save_to_csv("Bell:EarthquakeAlarm", sender, ip=sender_ip); return
 
 
 
@@ -16036,7 +16023,7 @@ try:
     if '_auto_watch_schedules' in globals(): root.after(30000, _auto_watch_schedules)
     if '_apply_button_hover' in globals(): root.after(400, lambda: _apply_button_hover(root))
 
-    # [NEW] Auto-Repair Edge TTS
+    # [NEW] Auto-Repair Edge TTS  (非阻塞版 — 不執行 pip install 以避免關閉時卡住)
     def _check_and_repair_edge_tts():
         try:
             print(">>> [Self-Check] 正在檢查 Edge TTS 引擎連線...")
@@ -16055,7 +16042,7 @@ try:
                 finally:
                     try: os.remove(tmp_path)
                     except: pass
-            
+
             loop = asyncio.new_event_loop()
             ok = loop.run_until_complete(_test())
             loop.close()
@@ -16065,25 +16052,13 @@ try:
                 STATE["edge_tts_status"] = "OK"
             else:
                 raise Exception("Output file empty or missing")
-            
-        except Exception as e:
-            print(f">>> [Self-Check] Edge TTS 異常 ({e})，正在評估修復方案...")
-            STATE["edge_tts_status"] = f"Error: {str(e)[:15]}"
-            
-            # Check if running as PyInstaller Frozen app
-            if getattr(sys, "frozen", False):
-                print(">>> [Packaged App] Edge TTS Check Failed. (SSL/Network issue).")
-                STATE["edge_tts_status"] = "Error (Frozen)"
-            else:
-                try:
-                    STATE["edge_tts_status"] = "Repairing..."
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "edge-tts"])
-                    print(">>> [Self-Repair] Edge TTS 修復完成！請重啟應用程式以生效。")
-                    STATE["edge_tts_status"] = "Fixed"
-                except Exception as e2:
-                    print(f">>> [Self-Repair] 自動修復失敗: {e2}")
-                    STATE["edge_tts_status"] = "Fix Failed"
 
+        except Exception as e:
+            print(f">>> [Self-Check] Edge TTS 異常 ({e})")
+            STATE["edge_tts_status"] = f"Error: {str(e)[:30]}"
+            # 不自動 pip install — 避免程式關閉時因 subprocess 阻塞而無法立即停止
+            # 若需要修復請手動執行：pip install --upgrade edge-tts
+            print(">>> [Self-Check] 若需修復 Edge TTS 請手動執行: pip install --upgrade edge-tts")
 
     # Async check in background to not block GUI
     threading.Thread(target=_check_and_repair_edge_tts, daemon=True).start()
