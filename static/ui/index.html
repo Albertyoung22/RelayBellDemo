@@ -2140,12 +2140,24 @@
           });
         }
 
+        let lastAudioUrl = "";
+        let lastAudioTs = 0;
+
         ws.onmessage = (e) => {
           if (e.data === "PONG") return;
           console.log("[AudioWS] Message:", e.data);
           try {
             const data = JSON.parse(e.data);
             if (data.type === 'play_audio') {
+              // [Deduplication] Prevent identical audio from being queued twice in 1 second
+              const now = Date.now();
+              if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) {
+                console.log("[AudioWS] Blocked duplicated audio:", data.url);
+                return;
+              }
+              lastAudioUrl = data.url;
+              lastAudioTs = now;
+
               console.log("[AudioWS] Queuing:", data.url);
               audioQueue.push(data.url);
               processQueue();
