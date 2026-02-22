@@ -3483,6 +3483,7 @@ def broadcast_web_audio(filename, duration=0):
         "duration": duration,
         "ts": now
     })
+    print(f"[DEBUG] Broadcasting audio: {url} to {len(WEB_WS_CLIENTS)} clients")
     
     with WEB_WS_LOCK:
         dead = []
@@ -6247,12 +6248,15 @@ def handle_msg(text, addr):
 
 
     if text.strip() == "Bell:ClassStart":
+        print(f"[DEBUG] Quick Command: ClassStart")
         auto_unmute_if_needed(); play_mp3_file("ClassStart.mp3"); text_area_insert(" 上課鈴播放 ClassStart.mp3"); save_to_csv("Bell:ClassStart", sender, ip=sender_ip); return
 
     if text.strip() == "Bell:ClassEnd":
+        print(f"[DEBUG] Quick Command: ClassEnd")
         auto_unmute_if_needed(); play_mp3_file("ClassEnd.mp3"); text_area_insert(" 下課鈴播放 ClassEnd.mp3"); save_to_csv("Bell:ClassEnd", sender, ip=sender_ip); return
 
     if text.strip() == "Bell:EarthquakeAlarm":
+        print(f"[DEBUG] Quick Command: EarthquakeAlarm")
         auto_unmute_if_needed(); play_mp3_file("justearthquakeAlarm.mp3"); text_area_insert(" 地震警報播放 justearthquakeAlarm.mp3"); save_to_csv("Bell:EarthquakeAlarm", sender, ip=sender_ip); return
 
 
