@@ -10642,6 +10642,14 @@ def translate_api():
                     source = "zh-TW"
             
             print(f"[DEBUG] Final Routing: {source} -> {target}")
+            
+            # [Optimization] If the text is purely numeric or punctuation, skip translation
+            # We check if there's at least one letter or Chinese character
+            import re
+            is_significant = any('\u4e00' <= char <= '\u9fff' for char in q) or re.search(r'[a-zA-Z]', q)
+            if not is_significant:
+                print(f"[DEBUG] Input is purely numeric/punctuation, skipping translation.")
+                return jsonify(ok=True, translatedText=q, text=q, via="identity_skip")
         else:
             q = (data.get("text") or "").strip()
             source = "auto"
