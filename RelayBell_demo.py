@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+from __future__ import annotations
+import collections
+# Global broadcast cache to prevent duplication (used in broadcast_web_audio)
+BROADCAST_CACHE = collections.deque(maxlen=10) 
 
 """
 
@@ -32,7 +36,6 @@ UDP 語音接收端（含桌面 UI｜保留全部原功能｜前端頁面獨立�
 
 """
 
-from __future__ import annotations
 
 
 
@@ -1599,7 +1602,7 @@ def live_stream(ws):
 
 
 
-        if _MPV:
+        if _MPV and _HAS_PYGAME:
 
              # Use MPV (Better for streaming pipes)
 
@@ -1641,7 +1644,7 @@ def live_stream(ws):
 
         
 
-        elif _FFMPEG:
+        elif _FFMPEG and _HAS_PYGAME:
 
              # Use FFplay
 
@@ -2236,10 +2239,6 @@ def api_speak_audio_blob():
                 print(f"[Debug] Chime merge error: {e}")
 
 
-
-        play_mp3_file(final_play_path) 
-
-        
 
         play_mp3_file(final_play_path) 
 
@@ -3449,7 +3448,7 @@ def _set_progress(pct):
 
 def broadcast_web_audio(filename, duration=0):
     """
-    廣播音訊播放給所有 Web 用戶 (已優化，避免 os.walk)
+    廣播音訊播放給所有 Web 用戶 (已優化，支援重複過濾)
     """
     basename = os.path.basename(filename)
     
@@ -3468,12 +3467,21 @@ def broadcast_web_audio(filename, duration=0):
     clean_rel = rel_path.replace('\\', '/')
     url = f"/api/audio_proxy?path={quote(clean_rel)}"
     
+    # [Deduplication] Prevent identical broadcasts within 1.2 seconds (e.g. from multiple workers)
+    now = time.time()
+    for cached_type, cached_url, cached_ts in BROADCAST_CACHE:
+        if cached_type == "play_audio" and cached_url == url and (now - cached_ts) < 1.2:
+            print(f"[WS-Web] Duplicated broadcast blocked for: {basename}")
+            return
+            
+    BROADCAST_CACHE.append(("play_audio", url, now))
+
     msg = json.dumps({
         "type": "play_audio",
         "url": url,
         "name": basename,
         "duration": duration,
-        "ts": time.time()
+        "ts": now
     })
     
     with WEB_WS_LOCK:
@@ -5340,39 +5348,6 @@ def play_taigi_tts(text):
     except Exception as e:
         text_area_insert(f"⚠️ 台語廣播失敗：{e}", "TTS")
 
-@app.route('/taigi/say', methods=['POST'])
-def api_taigi_say():
-    try:
-        data = request.json or request.form or {}
-        text = data.get("text")
-        if not text: return jsonify(ok=False, error="No text"), 400
-        
-        gender = data.get("gender") # "male" or "female" or "m" / "f"
-        play = data.get("play")
-        speed = data.get("speed") # float 1.0
-        
-        if play == "true" or play is True:
-             # Server Playback
-             def _task():
-                 try:
-                     path = generate_taigi_tts(text, gender, speed)
-                     taigi_play_wav_with_fx(path)
-                 except Exception as e:
-                     text_area_insert(f"⚠️ API台語失敗: {e}")
-             threading.Thread(target=_task, daemon=True).start()
-             return jsonify(ok=True, message="Playing")
-        else:
-             # Generation Only (Preview/Download)
-             path = generate_taigi_tts(text, gender, speed)
-             filename = os.path.basename(path)
-             
-             # Register in metadata for UPLOAD_DIR listing
-             _write_upload_meta(path, f"Taigi-{text[:10]}", filename, "audio")
-             
-             return jsonify(ok=True, file=filename, url=f"/download/{filename}")
-
-    except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
