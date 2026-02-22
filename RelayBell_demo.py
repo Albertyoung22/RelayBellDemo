@@ -1473,28 +1473,43 @@ def api_audio_proxy():
     path = request.args.get('path')
     if not path: return abort(400)
     
-    # [Robustness] 修正路徑分隔符
+    # [Robustness] 修正路徑分隔符並避免絕對路徑攻擊
     path = path.replace('\\', '/').strip('/')
     
     abs_path = None
+    found = False
     
-    # [Fix] 支援虛擬前綴轉換
+    # 定義可供搜尋的目錄
+    search_dirs = [APP_DIR, DATA_DIR, UPLOAD_DIR, RECORD_DIR]
+    try:
+        # 動態獲取 TAIGI_AUDIO_DIR 以免尚未定義
+        t_dir = globals().get("TAIGI_AUDIO_DIR")
+        if t_dir: search_dirs.append(t_dir)
+        import tempfile
+        search_dirs.append(tempfile.gettempdir())
+    except: pass
+
+    # 1. 處理虛擬前綴轉換
     if path.startswith("uploads/"):
         target_rel = path[len("uploads/"):]
         abs_path = os.path.abspath(os.path.join(UPLOAD_DIR, target_rel))
-    elif path.startswith("rec/"):
-        target_rel = path[len("rec/"):]
+    elif path.startswith("records/") or path.startswith("rec/"):
+        prefix = "records/" if path.startswith("records/") else "rec/"
+        target_rel = path[len(prefix):]
         abs_path = os.path.abspath(os.path.join(RECORD_DIR, target_rel))
+    elif path.startswith("temp_audio/"):
+        target_rel = path[len("temp_audio/"):]
+        abs_path = os.path.join(tempfile.gettempdir(), target_rel)
     else:
-        # 1. 先嘗試原有邏輯
+        # 2. 嘗試資源路徑
         cand = resource_path(path) if not os.path.isabs(path) else path
         if os.path.exists(cand):
             abs_path = cand
         else:
-            # 2. 針對已知的幾個位置直接尋找
+            # 3. 針對 basename 在已知目錄搜尋
             basename = os.path.basename(path)
             for sdir in search_dirs:
-                if not os.path.exists(sdir): continue
+                if not sdir or not os.path.exists(sdir): continue
                 cand = os.path.join(sdir, basename)
                 if os.path.exists(cand):
                     abs_path = cand
@@ -1502,9 +1517,8 @@ def api_audio_proxy():
                     break
             
             if not found:
-                # 最後嘗試系統暫存
-                import tempfile
-                sys_tmp = os.path.join(tempfile.gettempdir(), os.path.basename(path))
+                # 最後嘗試系統暫存 (以 basename 匹配)
+                sys_tmp = os.path.join(tempfile.gettempdir(), basename)
                 if os.path.exists(sys_tmp):
                     abs_path = sys_tmp
 
@@ -3564,10 +3578,11 @@ def broadcast_web_audio(filename, duration=0):
     # 決定網頁可存取的相對路徑
     if "UploadedMP3" in filename or "uploads" in filename.lower():
         rel_path = f"uploads/{basename}"
-    elif "Recoding" in filename or "records" in filename.lower():
+    elif "Recoding" in filename or "records" in filename.lower() or "rec/" in filename.lower():
         rel_path = f"records/{basename}"
-    elif "temp_audio" in filename:
-        rel_path = f"api/temp_audio/{basename}"
+    elif "tmp" in filename.lower() or "temp" in filename.lower():
+        # TTS 或暫存檔
+        rel_path = f"temp_audio/{basename}"
     else:
         # 預設為根目錄資源
         rel_path = basename
@@ -4741,8 +4756,13 @@ async def speak_text_async(text, force_chime_off=False):
                         print(f"[Chime] Play error: {ce}")
                      
                      play_sound(wav_path)
-                     try: os.remove(wav_path)
-                     except: pass
+                     # [Safety] 延遲刪除
+                     def delayed_cleanup(p):
+                        try:
+                            time.sleep(10)
+                            if os.path.exists(p): os.remove(p)
+                        except: pass
+                     threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
                      
                      if not (stop_playback_event.is_set() or voice_muted):
                         ui_safe(set_playing_status, f"✅ 朗讀完成（MeloTTS）")
@@ -4776,8 +4796,15 @@ async def speak_text_async(text, force_chime_off=False):
                          play_sound(START_SOUND, ignore_interrupt=True, wait=False)
                          await asyncio.sleep(1.0)
                     play_sound(wav_path)
-                    try: os.remove(wav_path)
-                    except: pass
+                    # [Safety] 延遲刪除
+                    def delayed_cleanup(p):
+                        try:
+                            import time
+                            time.sleep(10)
+                            if os.path.exists(p): os.remove(p)
+                        except: pass
+                    import threading
+                    threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
 
                     if not (stop_playback_event.is_set() or voice_muted):
                         try:
@@ -4828,8 +4855,15 @@ async def speak_text_async(text, force_chime_off=False):
                          await asyncio.sleep(1.0)
                          
                     play_sound(wav_path)
-                    try: os.remove(wav_path)
-                    except: pass
+                    # [Safety] 延遲刪除
+                    def delayed_cleanup(p):
+                        try:
+                            import time
+                            time.sleep(10)
+                            if os.path.exists(p): os.remove(p)
+                        except: pass
+                    import threading
+                    threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
                     if not (stop_playback_event.is_set() or voice_muted):
                         try:
                             if should_chime and os.path.exists(END_SOUND):
@@ -4903,8 +4937,13 @@ async def speak_text_async(text, force_chime_off=False):
                          play_fx(START_SOUND, ignore_interrupt=True)
                          await asyncio.sleep(0.6)
                     play_sound(mp3_path)
-                    try: os.remove(mp3_path)
-                    except Exception: pass
+                    # [Safety] 延遲刪除，讓 Web client 有時間下載
+                    def delayed_cleanup(p):
+                        try:
+                            time.sleep(10)
+                            if os.path.exists(p): os.remove(p)
+                        except: pass
+                    threading.Thread(target=delayed_cleanup, args=(mp3_path,), daemon=True).start()
 
                     if not (stop_playback_event.is_set() or voice_muted):
                         try:
@@ -5008,13 +5047,13 @@ async def speak_text_async(text, force_chime_off=False):
                      time.sleep(0.5)
                 play_sound(tmp)
 
-            try:
-
-                os.remove(tmp)
-
-            except Exception:
-
-                pass
+            # [Safety] 延遲刪除
+            def delayed_cleanup(p):
+                try:
+                    time.sleep(10)
+                    if os.path.exists(p): os.remove(p)
+                except: pass
+            threading.Thread(target=delayed_cleanup, args=(tmp,), daemon=True).start()
 
             if not (stop_playback_event.is_set() or voice_muted):
 
@@ -5069,8 +5108,15 @@ async def speak_text_async(text, force_chime_off=False):
                          play_fx(START_SOUND, ignore_interrupt=True)
                          time.sleep(0.5)
                     play_sound(wav_path)
-                    try: os.remove(wav_path)
-                    except: pass
+                    # [Safety] 延遲刪除
+                    def delayed_cleanup(p):
+                        try:
+                            import time
+                            time.sleep(10)
+                            if os.path.exists(p): os.remove(p)
+                        except: pass
+                    import threading
+                    threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
                     if not (stop_playback_event.is_set() or voice_muted):
                         try:
                             if os.path.exists(END_SOUND):
