@@ -1498,6 +1498,12 @@
                     status.textContent = "Audio Receiver: ON";
                     status.style.color = "rgba(0, 255, 0, 0.7)";
                     console.log("[AudioWS] Connected");
+                    heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send("PING"); }, 15000);
+                };
+                let heartbeat;
+                ws.onclose = () => {
+                    clearInterval(heartbeat);
+                    setTimeout(connect, 5000);
                 };
 
                 let audioQueue = [];
@@ -1559,6 +1565,7 @@
                 }
 
                 ws.onmessage = (e) => {
+                    if (e.data === "PONG") return;
                     try {
                         const data = JSON.parse(e.data);
                         if (data.type === 'play_audio') {

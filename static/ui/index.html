@@ -2091,7 +2091,8 @@
   </script>
   <!-- Audio Receiver for Redirected Audio -->
   <div id="audio-receiver-status"
-    style="position:fixed; bottom:10px; right:10px; font-size:10px; color:#999; z-index:9999;">Audio Receiver: OFF</div>
+    style="position:fixed; bottom:10px; right:10px; font-size:10px; color:#999; z-index:9999; background:rgba(0,0,0,0.1); padding:4px 8px; border-radius:4px; cursor:pointer;"
+    onclick="window.testLocalAudio()">Audio Receiver: OFF (Click to Test)</div>
   <audio id="web-audio-player" style="display:none;"></audio>
   <script>
     (function () {
@@ -2111,9 +2112,18 @@
         }
         console.log("[AudioWS] Connecting to:", wsUrl);
         ws = new WebSocket(wsUrl);
+        let heartbeat;
         ws.onopen = () => {
           status.textContent = "Audio Receiver: ON";
           status.style.color = "rgba(0, 150, 0, 0.7)";
+          console.log("[AudioWS] Connection established");
+          heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send("PING"); }, 15000);
+        };
+        ws.onclose = () => {
+          status.textContent = "Audio Receiver: OFF";
+          status.style.color = "#999";
+          clearInterval(heartbeat);
+          setTimeout(connect, 5000);
         };
         let audioQueue = [];
         let isPlaying = false;
@@ -2162,10 +2172,12 @@
         }
 
         ws.onmessage = (e) => {
+          if (e.data === "PONG") return;
+          console.log("[AudioWS] Message:", e.data);
           try {
             const data = JSON.parse(e.data);
             if (data.type === 'play_audio') {
-              console.log("Incoming audio command:", data.url);
+              console.log("[AudioWS] Queuing:", data.url);
               audioQueue.push(data.url);
               processQueue();
             } else if (data.type === 'stop_audio') {
@@ -2178,7 +2190,17 @@
             } else if (data.type === 'resume_audio') {
               player.play().catch(e => { });
             }
-          } catch (err) { }
+          } catch (err) { console.error("[AudioWS] Parse Error:", err); }
+        };
+
+        // NEW: Local Diagnostic Test
+        window.testLocalAudio = () => {
+          console.log("[AudioWS] Test starting...");
+          const testUrl = "https://www.soundjay.com/buttons/button-1.mp3";
+          const testPlayer = new Audio(testUrl);
+          testPlayer.play()
+            .then(() => alert("本機音訊測試成功！如果您聽得到聲音，表示瀏覽器播音正常。"))
+            .catch(err => alert("播音失敗：" + err.message + "\n請點擊頁面上方藍色按鈕授權。"));
         };
         ws.onclose = () => {
           status.textContent = "Audio Receiver: DISCONNECTED";

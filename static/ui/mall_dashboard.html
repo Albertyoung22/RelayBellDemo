@@ -1302,10 +1302,17 @@
 
                 console.log("[AudioWS] Connecting to:", wsUrl);
                 ws = new WebSocket(wsUrl);
-
+                let heartbeat;
                 ws.onopen = () => {
                     status.textContent = "Audio Receiver: ON";
                     status.style.color = "rgba(0, 150, 0, 0.7)";
+                    heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send("PING"); }, 15000);
+                };
+                ws.onclose = () => {
+                    status.textContent = "Audio Receiver: OFF";
+                    status.style.color = "red";
+                    clearInterval(heartbeat);
+                    setTimeout(connect, 5000);
                 };
 
                 let audioQueue = [];
@@ -1363,6 +1370,8 @@
                 }
 
                 ws.onmessage = (e) => {
+                    if (e.data === "PONG") return;
+                    console.log("[AudioWS] Inbound:", e.data);
                     try {
                         const data = JSON.parse(e.data);
                         if (data.type === 'play_audio') {
@@ -1375,6 +1384,15 @@
                             player.currentTime = 0;
                         }
                     } catch (err) { }
+                };
+
+                // Local Diagnostic
+                window.testLocalAudio = () => {
+                    const testUrl = "https://www.soundjay.com/buttons/button-1.mp3";
+                    const testPlayer = new Audio(testUrl);
+                    testPlayer.play()
+                        .then(() => alert("本機音訊測試成功！"))
+                        .catch(err => alert("測試失敗：" + err.message));
                 };
 
                 ws.onclose = () => {
