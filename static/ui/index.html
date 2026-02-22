@@ -2119,15 +2119,23 @@
             isPlaying = false;
             player.onended = null;
             player.onerror = null;
+
+            // Re-queue the URL so it's not lost
+            audioQueue.unshift(url);
+
             if (!document.getElementById('play-gesture-btn')) {
               const btn = document.createElement('button');
               btn.id = 'play-gesture-btn';
               btn.textContent = "🔊 點擊啟用背景廣播接收";
               btn.style = "position:fixed; top:20px; right:20px; z-index:10000; padding:12px 24px; background:linear-gradient(135deg, #1e7bd8, #2563eb); color:white; border:none; border-radius:15px; box-shadow:0 8px 20px rgba(0,0,0,0.3); font-weight:bold; cursor:pointer;";
-              btn.onclick = () => { player.play().catch(e => { }); btn.remove(); processQueue(); };
+              btn.onclick = () => {
+                // Unlock audio context with silent sound then process queue
+                player.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+                player.play().catch(e => { });
+                btn.remove();
+                setTimeout(processQueue, 300);
+              };
               document.body.appendChild(btn);
-            } else {
-              setTimeout(processQueue, 1500);
             }
           });
         }
