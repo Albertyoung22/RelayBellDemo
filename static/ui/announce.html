@@ -328,17 +328,86 @@
       }
     }
 
+    /* ------------------------
+       ✅ 新增：WebSocket 音訊接收器
+    ------------------------ */
+    let audioQueue = [];
+    let isPlayingAudio = false;
+    let lastAudioUrl = "";
+    let lastAudioTs = 0;
+    const player = new Audio();
+
+    function processAudioQueue() {
+      if (isPlayingAudio || audioQueue.length === 0) return;
+      isPlayingAudio = true;
+      let url = audioQueue.shift();
+      if (url.startsWith('/') && API) {
+        // Handle absolute-path URLs if API is defined
+        const base = API.endsWith('/') ? API.slice(0, -1) : API;
+        url = base + url;
+      }
+      console.log("[AudioWS] Processing:", url);
+
+      player.onended = () => {
+        isPlayingAudio = false;
+        setTimeout(processAudioQueue, 300);
+      };
+      player.onerror = (e) => {
+        console.error("[AudioWS] Playback failed:", url, e);
+        isPlayingAudio = false;
+        setTimeout(processAudioQueue, 500);
+      };
+
+      player.src = url;
+      player.play().catch(err => {
+        console.warn("[AudioWS] Autoplay blocked, queuing for manual trigger or next interaction.");
+        isPlayingAudio = false;
+        audioQueue.unshift(url);
+        // Show media prompt if blocked
+        const prompt = document.getElementById("mediaPrompt");
+        if (prompt) prompt.style.display = "block";
+      });
+    }
+
+    function connectAudioWS() {
+      const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/web";
+      console.log("[AudioWS] Connecting to:", wsUrl);
+      const ws = new WebSocket(wsUrl);
+      let heartbeat;
+
+      ws.onopen = () => {
+        console.log("[AudioWS] Connected");
+        heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send("PING"); }, 15000);
+      };
+      ws.onmessage = (e) => {
+        if (e.data === "PONG") return;
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'play_audio') {
+            const now = Date.now();
+            if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) {
+              console.log("[AudioWS] Duplicated audio blocked:", data.url);
+              return;
+            }
+            lastAudioUrl = data.url; lastAudioTs = now;
+            console.log("[AudioWS] Queued:", data.url);
+            audioQueue.push(data.url);
+            processAudioQueue();
+          } else if (data.type === 'stop_audio') {
+            audioQueue = []; isPlayingAudio = false; player.pause();
+          }
+        } catch (err) { }
+      };
+      ws.onclose = () => {
+        clearInterval(heartbeat);
+        setTimeout(connectAudioWS, 5000);
+      };
+    }
+
     function speakIfNeeded(txt, on) {
       if (!on) return;
-      if (!("speechSynthesis" in window)) return;
-
-      try {
-        const u = new SpeechSynthesisUtterance(txt);
-        u.lang = "zh-TW";
-        u.rate = 0.95;
-        speechSynthesis.cancel();
-        speechSynthesis.speak(u);
-      } catch (e) { }
+      console.log("[Speak] Announcement (Server Audio anticipated):", txt);
+      return;
     }
 
     function applyState(st) {
@@ -607,6 +676,7 @@
       setInterval(pullOnce, 3000);
       // 嘗試 SSE，若失敗會自動 fallback 上面的輪詢
       connectSSE();
+      connectAudioWS();
       showConsentIfNeeded();
     });
 

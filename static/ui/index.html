@@ -1673,7 +1673,7 @@
           } catch (e) {
             console.warn("EdgeTTS Preview failed, fallback to native:", e);
 
-            // Fallback: Standard Web Speech API
+            /* Fallback: Standard Web Speech API
             const u = new SpeechSynthesisUtterance(text);
             const langMap = {
               'zh': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP', 'ko': 'ko-KR',
@@ -1682,11 +1682,12 @@
             u.lang = langMap[lang] || lang;
             window.speechSynthesis.cancel();
             window.speechSynthesis.speak(u);
+            */
           }
         }
 
         stopAudition() {
-          window.speechSynthesis.cancel();
+          // window.speechSynthesis.cancel();
           const audio = this.shadowRoot.querySelector("#taigi-audio-player");
           if (audio) {
             audio.pause();
@@ -2060,105 +2061,42 @@
       let ws;
       const player = document.getElementById('web-audio-player');
       const status = document.getElementById('audio-receiver-status');
+
+      let audioQueue = [];
+      let isPlaying = false;
+      let lastAudioUrl = "";
+      let lastAudioTs = 0;
+
       function connect() {
-        let wsUrl;
-        if (API_BASE && API_BASE.startsWith('http')) {
-          const u = new URL(API_BASE);
-          const proto = u.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${proto}//${u.host}/ws/web`;
-        } else {
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${protocol}//${window.location.host}/ws/web`;
-        }
-        console.log("[AudioWS] Connecting to:", wsUrl);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/web`;
+
+        console.log("[AudioWS] Connecting:", wsUrl);
         ws = new WebSocket(wsUrl);
         let heartbeat;
+
         ws.onopen = () => {
           status.textContent = "Audio Receiver: ON";
           status.style.color = "rgba(0, 150, 0, 0.7)";
-          console.log("[AudioWS] Connection established");
           heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send("PING"); }, 15000);
         };
+
         ws.onclose = () => {
           status.textContent = "Audio Receiver: OFF";
           status.style.color = "#999";
           clearInterval(heartbeat);
           setTimeout(connect, 5000);
         };
-        let audioQueue = [];
-        let isPlaying = false;
-        function processQueue() {
-          if (isPlaying || audioQueue.length === 0) return;
-          isPlaying = true;
-          let url = audioQueue.shift();
-          // Prefix with API_BASE if relative
-          if (url.startsWith('/') && API_BASE) {
-            url = API_BASE + url;
-          }
-          console.log("Processing audio queue, playing:", url);
-
-          player.onended = () => {
-            console.log("[AudioWS] Playback Finished:", url);
-            isPlaying = false;
-            player.onended = null;
-            player.onerror = null;
-            setTimeout(processQueue, 300);
-          };
-
-          player.onerror = (e) => {
-            console.error("[AudioWS] Playback Failed:", url, e);
-            isPlaying = false;
-            player.onended = null;
-            player.onerror = null;
-            setTimeout(processQueue, 500);
-          };
-
-          player.src = url;
-          player.play().catch(err => {
-            console.warn("[AudioWS] Autoplay blocked, showing gesture prompt.");
-            isPlaying = false;
-            player.onended = null;
-            player.onerror = null;
-
-            // Re-queue the URL so it's not lost
-            audioQueue.unshift(url);
-
-            if (!document.getElementById('play-gesture-btn')) {
-              const btn = document.createElement('button');
-              btn.id = 'play-gesture-btn';
-              btn.textContent = "🔊 點擊啟用背景廣播接收";
-              btn.style = "position:fixed; top:20px; right:20px; z-index:10000; padding:12px 24px; background:linear-gradient(135deg, #1e7bd8, #2563eb); color:white; border:none; border-radius:15px; box-shadow:0 8px 20px rgba(0,0,0,0.3); font-weight:bold; cursor:pointer;";
-              btn.onclick = () => {
-                // Unlock audio context with silent sound then process queue
-                player.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-                player.play().catch(e => { });
-                btn.remove();
-                setTimeout(processQueue, 300);
-              };
-              document.body.appendChild(btn);
-            }
-          });
-        }
-
-        let lastAudioUrl = "";
-        let lastAudioTs = 0;
 
         ws.onmessage = (e) => {
           if (e.data === "PONG") return;
-          console.log("[AudioWS] Message:", e.data);
           try {
             const data = JSON.parse(e.data);
             if (data.type === 'play_audio') {
-              // [Deduplication] Prevent identical audio from being queued twice in 1 second
               const now = Date.now();
-              if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) {
-                console.log("[AudioWS] Blocked duplicated audio:", data.url);
-                return;
-              }
+              if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) return;
               lastAudioUrl = data.url;
               lastAudioTs = now;
-
-              console.log("[AudioWS] Queuing:", data.url);
               audioQueue.push(data.url);
               processQueue();
             } else if (data.type === 'stop_audio') {
@@ -2166,42 +2104,44 @@
               isPlaying = false;
               player.pause();
               player.currentTime = 0;
-            } else if (data.type === 'pause_audio') {
-              player.pause();
-            } else if (data.type === 'resume_audio') {
-              player.play().catch(e => { });
             }
-          } catch (err) { console.error("[AudioWS] Parse Error:", err); }
-        };
-
-        // NEW: Local Diagnostic Test
-        window.testLocalAudio = () => {
-          console.log("[AudioWS] Test starting using local proxy...");
-          // 使用伺服器內部的檔案測試，以驗證 Proxy 權限與連線
-          const testUrl = (typeof API_BASE !== 'undefined' && API_BASE ? API_BASE : '') + "/api/audio_proxy?path=ClassStart.mp3";
-          console.log("[AudioWS] Requesting test file:", testUrl);
-
-          const testPlayer = new Audio(testUrl);
-          testPlayer.play()
-            .then(() => {
-              console.log("[AudioWS] Test sound played successfully!");
-              alert("✅ 測試成功！瀏覽器已獲得播音授權，且伺服器 Proxy 通訊正常。\n\n如果您按下其他按鈕沒聲音，請確認該 MP3 是否已上傳至伺服器。");
-            })
-            .catch(err => {
-              console.error("[AudioWS] Test sound failed:", err);
-              alert("❌ 播音失敗！\n原因：" + err.message + "\n請求網址：" + testUrl + "\n\n1. 請確認右下角是否顯示 ON。\n2. 請點擊頁面藍色按鈕「🔊 點擊啟用背景廣播接收」。\n3. 檢查伺服器是否正在執行。");
-            });
-        };
-        ws.onclose = () => {
-          status.textContent = "Audio Receiver: DISCONNECTED";
-          status.style.color = "red";
-          setTimeout(connect, 5000);
-        };
-        ws.onerror = (err) => {
-          console.error("[AudioWS] Error:", err);
-          ws.close();
+          } catch (err) { }
         };
       }
+
+      function processQueue() {
+        if (isPlaying || audioQueue.length === 0) return;
+        isPlaying = true;
+        let url = audioQueue.shift();
+        if (url.startsWith('/') && API_BASE) url = API_BASE + url;
+
+        player.onended = () => { isPlaying = false; setTimeout(processQueue, 100); };
+        player.onerror = () => { isPlaying = false; setTimeout(processQueue, 100); };
+
+        player.src = url;
+        player.play().catch(err => {
+          console.warn("[AudioWS] Play blocked", err);
+          isPlaying = false;
+          audioQueue.unshift(url);
+          showGestureBtn();
+        });
+      }
+
+      function showGestureBtn() {
+        if (document.getElementById('play-gesture-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'play-gesture-btn';
+        btn.textContent = "🔊 點擊啟用背景廣播聲音";
+        btn.style = "position:fixed; bottom:60px; right:20px; z-index:10000; padding:12px 24px; background:linear-gradient(135deg, #4f46e5, #ec4899); color:white; border:none; border-radius:15px; box-shadow:0 8px 20px rgba(0,0,0,0.3); font-weight:bold; cursor:pointer;";
+        btn.onclick = () => { player.play().catch(e => { }); btn.remove(); processQueue(); };
+        document.body.appendChild(btn);
+      }
+
+      window.testLocalAudio = () => {
+        const testUrl = (API_BASE || '') + "/api/audio_proxy?path=ClassStart.mp3";
+        new Audio(testUrl).play().then(() => alert("OK")).catch(e => alert(e));
+      };
+
       connect();
     })();
   </script>
