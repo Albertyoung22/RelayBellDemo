@@ -1486,27 +1486,34 @@ def api_audio_proxy():
         target_rel = path[len("rec/"):]
         abs_path = os.path.abspath(os.path.join(RECORD_DIR, target_rel))
     else:
-        # 1. 先嘗試 resource_path (專案目錄)
+        # 1. 先嘗試原有邏輯
         cand = resource_path(path) if not os.path.isabs(path) else path
         if os.path.exists(cand):
             abs_path = cand
         else:
-            # 2. 再嘗試在 APP_DIR 直接找
-            alt = os.path.join(APP_DIR, os.path.basename(path))
-            if os.path.exists(alt):
-                abs_path = alt
-            else:
-                # 3. 嘗試系統暫存目錄 (重要：MeloTTS / Azure TTS 常放在這)
+            # 2. 針對 Linux/Render 的暴力搜尋 (不分大小寫且包含子目錄)
+            # 嘗試在 APP_DIR, UPLOAD_DIR, RECORD_DIR 下尋找檔名匹配的檔案
+            basename = os.path.basename(path).lower()
+            found = False
+            search_dirs = [APP_DIR, UPLOAD_DIR, RECORD_DIR, os.path.join(DATA_DIR, "temp_audio")]
+            
+            for sdir in search_dirs:
+                if not os.path.exists(sdir): continue
+                for root_dir, dirs, files in os.walk(sdir):
+                    for f in files:
+                        if f.lower() == basename:
+                            abs_path = os.path.join(root_dir, f)
+                            found = True
+                            break
+                    if found: break
+                if found: break
+
+            if not found:
+                # 最後嘗試系統暫存
                 import tempfile
                 sys_tmp = os.path.join(tempfile.gettempdir(), os.path.basename(path))
                 if os.path.exists(sys_tmp):
                     abs_path = sys_tmp
-                else:
-                    # 4. 最後嘗試 DATA_DIR 下的特定臨時音效目錄
-                    tmp_dir = os.path.join(DATA_DIR, "temp_audio")
-                    last_try = os.path.join(tmp_dir, os.path.basename(path))
-                    if os.path.exists(last_try):
-                        abs_path = last_try
 
     if not abs_path or not os.path.exists(abs_path):
         print(f"[AudioProxy] 404 Not Found: {path} (Resolved: {abs_path})")
