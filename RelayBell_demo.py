@@ -4152,46 +4152,33 @@ def auto_unmute_if_needed():
 
 
 @with_relay_playback
-
 def taigi_play_wav_with_fx(path):
-
     """台語合成完成後，套用『直接播放』規格：Relay 開→前導→內容→結束→Relay 關。"""
-
     try:
-
         auto_unmute_if_needed()
-
         ui_safe(set_playing_status, f" 台語播放：{os.path.basename(path)}")
-
-        # 前導音（FX 通道，不打斷主播）
-
+        # 前導音
         try:
-
-            if os.path.exists(START_SOUND):
-
+            if CHIME_ENABLED and START_SOUND and os.path.exists(START_SOUND):
+                print(f"[Chime] Playing start (Taigi): {START_SOUND}")
                 play_fx(START_SOUND, ignore_interrupt=True)
-
-        except Exception:
-
-            pass
+                time.sleep(0.5) 
+            elif CHIME_ENABLED:
+                print(f"[Chime] Skip start (Taigi): FILE_NOT_FOUND={START_SOUND}")
+        except Exception as e:
+            print(f"[Chime] Taigi start error: {e}")
 
         # 主播
-
         play_sound(path, duration_estimate=10)
 
         # 結束音
-
         try:
-
             if not (stop_playback_event.is_set() or voice_muted):
-
-                if os.path.exists(END_SOUND):
-
+                if CHIME_ENABLED and END_SOUND and os.path.exists(END_SOUND):
+                    print(f"[Chime] Playing end (Taigi): {END_SOUND}")
                     play_sound(END_SOUND, ignore_interrupt=True)
-
-        except Exception:
-
-            pass
+        except Exception as e:
+             print(f"[Chime] Taigi end error: {e}")
 
         ui_safe(set_playing_status, "✅ 台語播放完成")
 
@@ -4663,12 +4650,14 @@ async def speak_text_async(text, force_chime_off=False):
                 if os.path.exists(wav_path) and os.path.getsize(wav_path) > 0:
                      ui_safe(set_playing_status, f"🔊 MeloTTS 播放中...")
                      try:
+                        # Log chime status
+                        print(f"[DEBUG] MeloTTS Chime check: CHIME_ENABLED={CHIME_ENABLED}, should_chime={should_chime}, FILE={START_SOUND}")
                         if should_chime and START_SOUND and os.path.isfile(START_SOUND):
-                            print(f"[Chime] Playing start: {START_SOUND}")
+                            print(f"[Chime] Playing start (Melo): {START_SOUND}")
                             play_fx(START_SOUND, ignore_interrupt=True)
-                            time.sleep(0.5)
+                            await asyncio.sleep(0.6) # Wait for chime to start broadcast simulation
                         else:
-                            print(f"[Chime] Skipping start. should_chime={should_chime}, file_ok={os.path.isfile(START_SOUND) if START_SOUND else 'None'}")
+                            print(f"[Chime] Skipping start. should_chime={should_chime}, file_ex={os.path.isfile(START_SOUND) if START_SOUND else 'None'}")
                      except Exception as ce:
                         print(f"[Chime] Play error: {ce}")
                      
@@ -4704,9 +4693,9 @@ async def speak_text_async(text, force_chime_off=False):
                 else:
                     # [Chime] Piper Force
                     if should_chime and START_SOUND and os.path.isfile(START_SOUND):
-                         print(f"[Chime] Playing start (Azure): {START_SOUND}")
+                         print(f"[Chime] Playing start (Piper): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
-                         time.sleep(0.5)
+                         await asyncio.sleep(0.6)
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
@@ -4757,7 +4746,7 @@ async def speak_text_async(text, force_chime_off=False):
                     if should_chime and START_SOUND and os.path.isfile(START_SOUND):
                          print(f"[Chime] Playing start (Azure): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
-                         time.sleep(0.5)
+                         await asyncio.sleep(0.6)
                     play_sound(wav_path)
                     try: os.remove(wav_path)
                     except: pass
@@ -4830,9 +4819,9 @@ async def speak_text_async(text, force_chime_off=False):
 
                     # [Chime] EdgeTTS
                     if should_chime and START_SOUND and os.path.isfile(START_SOUND):
-                         print(f"[Chime] Playing start (Azure): {START_SOUND}")
+                         print(f"[Chime] Playing start (Edge): {START_SOUND}")
                          play_fx(START_SOUND, ignore_interrupt=True)
-                         time.sleep(0.5)
+                         await asyncio.sleep(0.6)
                     play_sound(mp3_path)
                     try: os.remove(mp3_path)
                     except Exception: pass
@@ -8637,15 +8626,10 @@ def api_cmd():
             v = push_cmd(g, cmd, only_ips or None)
 
             st = groups[g]["state"]
-
             if action in ("set_media", "sync_play"):
-
                 st["url"]  = cmd["payload"].get("url","")
                 url = st["url"]
-                if url:
-                    # [Broadcast] Also redirect to web clients
-                    threading.Thread(target=broadcast_web_audio, args=(url,), daemon=True).start()
-
+                # [Removed redundant manual broadcast that caused double voice]
                 st["type"] = cmd["payload"].get("type","video")
 
                 st["playing"] = False
