@@ -1468,34 +1468,63 @@ def ws_web_handler(ws):
 @app.route('/api/audio_proxy')
 def api_audio_proxy():
     """
-    讓前端可以下載任何路徑的音訊檔（僅限 MP3/WAV/M4A）
+    讓前端可以下載任何路徑的音訊檔（僅限音訊格式）
     """
     path = request.args.get('path')
     if not path: return abort(400)
     
-    # [Robustness] 修正路徑分隔符（前端發過來的可能是 \ 或 /）
-    path = path.replace('\\', os.sep).replace('/', os.sep)
+    # [Robustness] 修正路徑分隔符
+    path = path.replace('\\', '/').strip('/')
     
-    # 處理 resource_path
-    abs_path = resource_path(path) if not os.path.isabs(path) else path
+    abs_path = None
     
-    # [Robustness] 如果找不到，試著在 APP_DIR 下找
-    if not os.path.exists(abs_path):
-        basename = os.path.basename(path)
-        alt_path = os.path.join(APP_DIR, basename)
-        if os.path.exists(alt_path):
-            abs_path = alt_path
-            
-    if not os.path.exists(abs_path):
-        print(f"[AudioProxy] 找不到檔案: {abs_path}")
+    # [Fix] 支援虛擬前綴轉換
+    if path.startswith("uploads/"):
+        target_rel = path[len("uploads/"):]
+        abs_path = os.path.abspath(os.path.join(UPLOAD_DIR, target_rel))
+    elif path.startswith("rec/"):
+        target_rel = path[len("rec/"):]
+        abs_path = os.path.abspath(os.path.join(RECORD_DIR, target_rel))
+    else:
+        # 1. 先嘗試 resource_path (專案目錄)
+        cand = resource_path(path) if not os.path.isabs(path) else path
+        if os.path.exists(cand):
+            abs_path = cand
+        else:
+            # 2. 再嘗試在 APP_DIR 直接找
+            alt = os.path.join(APP_DIR, os.path.basename(path))
+            if os.path.exists(alt):
+                abs_path = alt
+            else:
+                # 3. 嘗試系統暫存目錄 (重要：MeloTTS / Azure TTS 常放在這)
+                import tempfile
+                sys_tmp = os.path.join(tempfile.gettempdir(), os.path.basename(path))
+                if os.path.exists(sys_tmp):
+                    abs_path = sys_tmp
+                else:
+                    # 4. 最後嘗試 DATA_DIR 下的特定臨時音效目錄
+                    tmp_dir = os.path.join(DATA_DIR, "temp_audio")
+                    last_try = os.path.join(tmp_dir, os.path.basename(path))
+                    if os.path.exists(last_try):
+                        abs_path = last_try
+
+    if not abs_path or not os.path.exists(abs_path):
+        print(f"[AudioProxy] 404 Not Found: {path} (Resolved: {abs_path})")
         return abort(404)
         
     ext = os.path.splitext(abs_path)[1].lower()
-    if ext not in ('.mp3', '.wav', '.m4a', '.ogg'):
-        print(f"[AudioProxy] 禁止存取非音訊檔: {abs_path}")
-        return abort(403)
+    mimetype = "audio/mpeg" # Default
+    if ext == ".wav": mimetype = "audio/wav"
+    elif ext == ".ogg": mimetype = "audio/ogg"
+    elif ext == ".m4a": mimetype = "audio/mp4"
+    elif ext == ".webm": mimetype = "audio/webm"
+    elif ext not in (".mp3", ".m4a"):
+        if ext not in ('.mp3', '.wav', '.m4a', '.ogg', '.webm'):
+            print(f"[AudioProxy] 403 Forbidden Extension: {ext} for {abs_path}")
+            return abort(403)
         
-    return send_file(abs_path)
+    print(f"[AudioProxy] Serving: {abs_path} as {mimetype}")
+    return send_file(abs_path, mimetype=mimetype)
 
 @sock.route('/ws/live')
 
@@ -3501,16 +3530,20 @@ def broadcast_web_audio(filename, duration=0):
     """
     廣播音訊播放給所有 Web 用戶
     """
-    # [Optimization] Use relative paths for known directories to make URLs cleaner and more robust
+    # [Optimization] Use relative paths for known directories
     rel_path = filename
     try:
-        # Check if the path is relative to APP_DIR or UPLOAD_DIR
         app_abs = os.path.abspath(APP_DIR).lower()
         up_abs = os.path.abspath(UPLOAD_DIR).lower()
         rec_abs = os.path.abspath(RECORD_DIR).lower()
-        file_abs = os.path.abspath(filename).lower()
         
-        raw_file_abs = os.path.abspath(filename)
+        # Ensure we have an absolute path to check against
+        full_filename = filename
+        if not os.path.isabs(full_filename):
+            full_filename = os.path.abspath(os.path.join(APP_DIR, filename))
+        
+        file_abs = full_filename.lower()
+        raw_file_abs = full_filename
         
         if file_abs.startswith(up_abs):
             rel_path = "uploads/" + os.path.relpath(raw_file_abs, os.path.abspath(UPLOAD_DIR)).replace('\\', '/')
@@ -3518,13 +3551,16 @@ def broadcast_web_audio(filename, duration=0):
             rel_path = "rec/" + os.path.relpath(raw_file_abs, os.path.abspath(RECORD_DIR)).replace('\\', '/')
         elif file_abs.startswith(app_abs):
             rel_path = os.path.relpath(raw_file_abs, os.path.abspath(APP_DIR)).replace('\\', '/')
+        else:
+            # If outside, just use basename (last resort fallback)
+            rel_path = os.path.basename(filename)
     except Exception as ex:
         print(f"[WebAudio] Path optimization error: {ex}")
         pass
 
     # 建構 API URL
     url = f"/api/audio_proxy?path={quote(rel_path)}"
-    print(f"[WebAudio] URL generated: {url}")
+    print(f"[WebAudio] Broadcast URL: {url} (Orig: {filename})")
     
     base_name = os.path.basename(filename)
     
@@ -3537,11 +3573,21 @@ def broadcast_web_audio(filename, duration=0):
     })
     
     with WEB_WS_LOCK:
+        clients = list(WEB_WS_CLIENTS)
+        count = len(clients)
+        
+    print(f"[WebAudio] Sending to {count} clients: {url}")
+    
+    if count == 0:
+        print("[WebAudio] WARNING: No web clients connected! Audio will not be heard on frontend.")
+        
+    with WEB_WS_LOCK:
         dead = []
-        for ws in WEB_WS_CLIENTS:
+        for ws in clients:
             try:
                 ws.send(msg)
-            except:
+            except Exception as e:
+                print(f"[WebAudio] Send failed: {e}")
                 dead.append(ws)
         for d in dead:
             if d in WEB_WS_CLIENTS:
@@ -3554,13 +3600,12 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
         if not duration_estimate or duration_estimate <= 0:
             try:
                 if filename.lower().endswith(".mp3"):
-                    # 如果有安裝 mutagen 則精確獲取
                     try:
                         from mutagen.mp3 import MP3
                         duration_estimate = MP3(filename).info.length
                     except Exception as e:
-                        print(f"[play_sound] Mutagen error or missing: {e}")
-                        duration_estimate = 3.0 # Fallback
+                        print(f"[play_sound] Mutagen failed for {filename}: {e}")
+                        duration_estimate = 3.5
                 elif filename.lower().endswith(".wav"):
                     import wave
                     with wave.open(filename, 'rb') as wf:
@@ -3568,7 +3613,10 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
                 else:
                     duration_estimate = 2.0
             except:
-                duration_estimate = 2.0
+                duration_estimate = 3.0
+        
+        # Ensure minimum duration for broadcast
+        if duration_estimate < 0.5: duration_estimate = 0.5
         
         # 廣播到前端
         broadcast_web_audio(filename, duration_estimate)
@@ -3593,8 +3641,12 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False):
 
 
 def _interrupt_current_playback():
+    """中斷目前的語音與 MP3 播放"""
+    print("[Playback] Interrupting current playback...")
     stop_playback_event.set()
     stop_web_audio()
+    # 給予一點時間讓 Worker 看到 Event，然後再清除，避免誤殺緊接而來的新任務
+    time.sleep(0.1)
     stop_playback_event.clear()
     ui_safe(_set_progress, 0); STATE["progress"] = 0
 
