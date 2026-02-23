@@ -25,6 +25,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      row-gap: 12px;
+      column-gap: 20px;
       padding: 14px 20px;
       background: linear-gradient(90deg, #1e7bd8 0%, #0369a1 100%);
       color: #fff;
@@ -34,13 +37,26 @@
     header .title {
       font-weight: 700;
       letter-spacing: 0.3px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-size: 1.15rem;
+    }
+
+    header .links {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      flex: 1;
+      min-width: 300px;
     }
 
     header .links a {
       color: #dff1ff;
       text-decoration: none;
-      margin-left: 12px;
+      margin-left: 14px;
       font-size: 13px;
+      white-space: nowrap;
     }
 
     main {
