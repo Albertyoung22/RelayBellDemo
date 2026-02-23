@@ -5416,6 +5416,28 @@ def show_fullscreen_message(msg):
 
 TIMETABLE_PATH = os.path.join(_BASE_FOR_TT, "timetable.json")
 
+# ==========================================================
+#  快速指令 -> 本機音檔映射表 (直接播放,不走 audio_proxy)
+# ==========================================================
+CMD_SOUND_TABLE = {
+    "Bell:ClassStart": "static/audio/ClassStart.mp3",
+    "Bell:ClassEnd":   "static/audio/ClassEnd.mp3",
+    "PlayMP3:flagsong.mp3":   "static/audio/flagsong.mp3",
+    "PlayMP3:countrysong.mp3": "static/audio/countrysong.mp3",
+    "PlayMP3:countrysong_classic.mp3": "static/audio/countrysong_classic.mp3",
+    "Bell:Award": "static/audio/Award.mp3",
+    "Bell:DoubleHeadedEagle": "static/audio/DoubleHeadedEagle.mp3",
+    "Bell:EarthquakeAlarm": "static/audio/EarthquakeAlarm.mp3",
+    "PlayMP3:justearthquakeAlarm.mp3": "static/audio/justearthquakeAlarm.mp3",
+    "Bell:MarchDrum": "static/audio/MarchDrum.mp3",
+    "PlayMP3:mute.mp3": "static/audio/mute.mp3",
+    "Bell:SchBell": "static/audio/schbell.mp3",
+    "PlayMP3:beforemic.mp3": "static/audio/beforemic.mp3",
+    "PlayMP3:beforemic2.mp3": "static/audio/beforemic2.mp3",
+    "PlayMP3:beforemic_all.mp3": "static/audio/beforemic_all.mp3",
+    "PlayMP3:aftermic.mp3": "static/audio/aftermic.mp3",
+}
+# ==========================================================
 timetable_enabled = True
 
 timetable_data = {
