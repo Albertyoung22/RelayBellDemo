@@ -1039,7 +1039,7 @@
           _safeBind("#btn-mp3stop", "click", () => this.postForm("/cmd", { cmd: "MP3Stop" }));
 
           this.shadowRoot.querySelectorAll('[data-cmd]').forEach(btn => {
-            btn.onclick = () => {
+            btn.addEventListener('click', () => {
               if (btn.disabled) return;
               const cmd = btn.getAttribute("data-cmd");
               console.log("[UI] Command Click:", cmd);
@@ -1054,7 +1054,7 @@
                 btn.disabled = false;
                 btn.style.opacity = "1";
               }, 1500);
-            };
+            });
           });
 
           _safeBind("#lang", "change", () => {
@@ -1811,13 +1811,10 @@
             console.log("[UI] Request:", path, kv);
             const targetUrl = (typeof API_BASE !== 'undefined' && API_BASE ? API_BASE : '') + path;
 
-            const params = new URLSearchParams();
-            for (const k in kv) params.append(k, kv[k]);
-
             await fetch(targetUrl, {
               method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: params.toString(),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(kv),
               cache: "no-store"
             });
             setTimeout(() => this.refreshState(), 400);

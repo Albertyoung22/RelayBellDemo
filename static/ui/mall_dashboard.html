@@ -1089,12 +1089,10 @@
 
         function postCmd(cmd) {
             console.log("[UI] Request:", cmd);
-            const params = new URLSearchParams();
-            params.append('cmd', cmd);
             fetch(`${API_BASE}/cmd`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: params.toString()
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cmd: cmd })
             });
         }
 
