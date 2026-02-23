@@ -1430,7 +1430,7 @@ def api_audio_proxy():
     found = False
     
     # 定義可供搜尋的目錄
-    search_dirs = [APP_DIR, DATA_DIR, UPLOAD_DIR, RECORD_DIR]
+    search_dirs = [APP_DIR, DATA_DIR, UPLOAD_DIR, RECORD_DIR, os.path.join(APP_DIR, 'static', 'audio')]
     try:
         # 動態獲取 TAIGI_AUDIO_DIR 以免尚未定義
         t_dir = globals().get("TAIGI_AUDIO_DIR")
