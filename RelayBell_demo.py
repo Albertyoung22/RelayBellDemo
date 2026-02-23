@@ -10743,23 +10743,28 @@ def special():
 
 
 
-@app.route("/cmd", methods=["POST"])
+@app.route("/cmd", methods=["GET", "POST"])
 def cmd():
-    # Support both Form and JSON
-    data = _get_json_tolerant()
-    c = ""
-    if isinstance(data, dict):
-        c = data.get("cmd", "")
+    # Extreme tolerance for Render WSGI/Waitress quirks
+    c = request.values.get("cmd", "").strip()
     
     if not c:
-        c = request.form.get("cmd", "")
+        data = _get_json_tolerant()
+        if isinstance(data, dict):
+            c = data.get("cmd", "").strip()
+            
+    if not c and request.data:
+        try:
+            raw_json = json.loads(request.data.decode('utf-8'))
+            c = raw_json.get("cmd", "").strip()
+        except: pass
         
     ip = _client_ip_from_request()
     if c:
         print(f"[API][{ip}] Command: {c}")
         threading.Thread(target=handle_msg, args=(c, (ip, "Web")), daemon=True).start()
     else:
-        print(f"[API][{ip}] Empty command. Data: {data} Form: {dict(request.form)}")
+        print(f"[API][{ip}] Empty cmd. Form: {dict(request.form)} Data: {request.data}")
     return ("", 204)
 
 
