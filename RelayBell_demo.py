@@ -382,8 +382,7 @@ except Exception:
     ScrolledText = _W
     print("[WARN] tkinter not available – running in headless / web-only mode")
 
-import csv, queue, time
-import tempfile, asyncio, requests, uuid, re, subprocess, ctypes, webbrowser, shutil, atexit, signal, glob
+import os, sys, time, threading, json, socket, subprocess, re, random, queue, logging, uuid, csv, tempfile, asyncio, requests, ctypes, webbrowser, shutil, atexit, signal, glob
 import secrets, hashlib
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -411,7 +410,9 @@ from functools import wraps
 
 from urllib.parse import quote
 _HAS_PYGAME = False
-print("[WARN] Local audio disabled. Audio fully redirected to frontend WebSocket only.")
+print("========================================")
+print(" RelayBell Demo Web System v2.1.2-GUID")
+print("========================================")
 
 import yt_dlp
 
@@ -1072,7 +1073,7 @@ def api_speak_v2():
             text = f"{{{{{meta}}}}}" + text
 
         # Queue it
-        handle_msg(text, ("API_V2", request.remote_addr))
+        handle_msg(text, (request.remote_addr, "API_V2"))
         return jsonify(ok=True, message="queued")
     except Exception as e:
         return jsonify(ok=False, error=str(e)), 500
@@ -2552,6 +2553,7 @@ STATE = {
     "azure_speech_key": "",
     "azure_speech_region": "",
     "edge_tts_status": "Checking...",
+    "version": "2.1.2-GUID",
 }
 
 try:
@@ -3467,13 +3469,13 @@ def broadcast_web_audio(filename, duration=0):
     clean_rel = rel_path.replace('\\', '/')
     url = f"/api/audio_proxy?path={quote(clean_rel)}"
     
-    # [Deduplication] Prevent identical broadcasts within 1.2 seconds (e.g. from multiple workers)
+    # Deduplication - Server-side prevent double broadcast
     now = time.time()
     for cached_type, cached_url, cached_ts in BROADCAST_CACHE:
-        if cached_type == "play_audio" and cached_url == url and (now - cached_ts) < 1.2:
-            print(f"[WS-Web] Duplicated broadcast blocked for: {basename}")
+        if cached_type == "play_audio" and cached_url == url and (now - cached_ts) < 1.0:
             return
-            
+
+    broadcast_id = str(uuid.uuid4())
     BROADCAST_CACHE.append(("play_audio", url, now))
 
     msg = json.dumps({
@@ -3481,9 +3483,10 @@ def broadcast_web_audio(filename, duration=0):
         "url": url,
         "name": basename,
         "duration": duration,
-        "ts": now
+        "ts": now,
+        "guid": broadcast_id
     })
-    print(f"[DEBUG] Broadcasting audio: {url} to {len(WEB_WS_CLIENTS)} clients")
+    print(f"[WS-Audio] Broadcasting: {basename} (ID: {broadcast_id[:8]})")
     
     with WEB_WS_LOCK:
         dead = []
@@ -4164,7 +4167,7 @@ def tts_full_play(text, force_chime_off=False): asyncio.run(speak_text_async(tex
 # ===== Piper (離線 TTS) 設定 =====
 
 PIPER_CFG_PATH = Path(DATA_DIR) / "piper.json"
-
+PIPER_CFG = {} # 全域設定快取
 PIPER_FORCE = False  # 透過指令臨時強制 Piper 優先（見 handle_msg）
 
 
@@ -4680,7 +4683,6 @@ async def speak_text_async(text, force_chime_off=False):
                             time.sleep(10)
                             if os.path.exists(p): os.remove(p)
                         except: pass
-                    import threading
                     threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
 
                     if not (stop_playback_event.is_set() or voice_muted):
@@ -4739,7 +4741,6 @@ async def speak_text_async(text, force_chime_off=False):
                             time.sleep(10)
                             if os.path.exists(p): os.remove(p)
                         except: pass
-                    import threading
                     threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
                     if not (stop_playback_event.is_set() or voice_muted):
                         try:
@@ -4992,7 +4993,6 @@ async def speak_text_async(text, force_chime_off=False):
                             time.sleep(10)
                             if os.path.exists(p): os.remove(p)
                         except: pass
-                    import threading
                     threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
                     if not (stop_playback_event.is_set() or voice_muted):
                         try:
@@ -5937,29 +5937,19 @@ def _is_duplicate_message(sender_ip: str | None, text: str) -> bool:
 
 
 def handle_msg(text, addr):
-
+    # addr can be a tuple (ip, port) or (ip, tag) or a string "System"
+    print(f"[Trace] handle_msg: '{text}' from {addr}")
     global voice_muted, voice_gender, voice_language, config, voice_rate, timetable_enabled, PIPER_FORCE, PIPER_CFG
 
-
-
-    sender_ip = _sender_ip_from_addr(addr) if isinstance(addr, tuple) else None
-
-    sender = addr[0] if isinstance(addr, tuple) else str(addr)
-
-
-
     if isinstance(addr, tuple):
-
         sender_ip = addr[0]
-
         sender_tag = addr[1] if len(addr) >= 2 else ""
-
-        sender = f"{sender_tag}@{sender_ip}" if sender_tag else sender_ip
-
-
+        sender = f"{sender_tag}@{sender_ip}" if sender_tag else str(sender_ip)
+    else:
+        sender_ip = "127.0.0.1"
+        sender = str(addr)
 
     if isinstance(addr, tuple) and _is_duplicate_message(sender_ip, text):
-
         return
 
 
@@ -6740,12 +6730,9 @@ def _load_timetable_from_disk():
     global timetable_data, timetable_enabled
 
     print(f"[TIMETABLE] Loading timetable from: {TIMETABLE_PATH}")
-
     try:
 
         if os.path.exists(TIMETABLE_PATH):
-
-            print(f"[TIMETABLE] File exists, loading...")
 
             with open(TIMETABLE_PATH, "r", encoding="utf-8") as f:
 
@@ -10757,15 +10744,22 @@ def special():
 
 
 @app.route("/cmd", methods=["POST"])
-
 def cmd():
-
-    cmd = request.form.get("cmd", "")
-
-    if cmd:
-
-        threading.Thread(target=handle_msg, args=(cmd, (_client_ip_from_request(), "Web")), daemon=True).start()
-
+    # Support both Form and JSON
+    data = _get_json_tolerant()
+    c = ""
+    if isinstance(data, dict):
+        c = data.get("cmd", "")
+    
+    if not c:
+        c = request.form.get("cmd", "")
+        
+    ip = _client_ip_from_request()
+    if c:
+        print(f"[API][{ip}] Command: {c}")
+        threading.Thread(target=handle_msg, args=(c, (ip, "Web")), daemon=True).start()
+    else:
+        print(f"[API][{ip}] Empty command. Data: {data} Form: {dict(request.form)}")
     return ("", 204)
 
 
@@ -11005,11 +10999,14 @@ def download(name):
 
 
 @app.route("/delete", methods=["POST"])
-
 def delete_file():
-
-    name = request.form.get("name", "")
-
+    data = _get_json_tolerant()
+    name = ""
+    if isinstance(data, dict):
+        name = data.get("name", "")
+    if not name:
+        name = request.form.get("name", "")
+    
     base = os.path.basename(name)
 
     if not base: return jsonify(ok=False, error="bad name"), 400
@@ -11955,17 +11952,11 @@ def schedules_scheduler_loop():
                         continue
 
                     # 支援單次預約 (date)
-
                     target_date = it.get('date')
-
                     if target_date:
-
                         if target_date != ymd:
-
                             continue
-
                     else:
-
                         # 只有在沒有指定 date 時才檢查星期幾
 
                         days = it.get('days') or []
