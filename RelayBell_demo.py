@@ -1430,7 +1430,7 @@ def api_audio_proxy():
     found = False
     
     # 定義可供搜尋的目錄
-    search_dirs = [APP_DIR, DATA_DIR, UPLOAD_DIR, RECORD_DIR]
+    search_dirs = [APP_DIR, DATA_DIR, UPLOAD_DIR, RECORD_DIR, os.path.join(APP_DIR, 'static', 'audio')]
     try:
         # 動態獲取 TAIGI_AUDIO_DIR 以免尚未定義
         t_dir = globals().get("TAIGI_AUDIO_DIR")
@@ -5974,6 +5974,25 @@ def handle_msg(text, addr):
     if isinstance(addr, tuple) and _is_duplicate_message(sender_ip, text):
         return
 
+    # -------------------------------------------------
+    # 1️⃣ 直接播放映射表內的指令（不走 audio_proxy）
+    # -------------------------------------------------
+    if text in CMD_SOUND_TABLE:
+        rel_path = CMD_SOUND_TABLE[text]
+        abs_path = os.path.abspath(rel_path)
+        if os.path.isfile(abs_path):
+            print(f"[INFO] Directly playing sound for command '{text}': {abs_path}")
+            play_sound(abs_path)
+        else:
+            print(f"[WARN] 音檔不存在: {abs_path}")
+        return
+
+    # -------------------------------------------------
+    # 2️⃣ 其餘 Bell / PlayMP3 指令仍走原本的 broadcast_web_audio（保留舊行為）
+    # -------------------------------------------------
+    if text.startswith("Bell:") or text.startswith("PlayMP3:"):
+        broadcast_web_audio(text)
+        return
 
 
     # Check for Weather Report Command
