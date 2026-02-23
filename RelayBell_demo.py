@@ -3478,19 +3478,24 @@ def broadcast_web_audio(filename, duration=0):
     basename = os.path.basename(filename)
     
     # 決定網頁可存取的相對路徑
-    if "UploadedMP3" in filename or "uploads" in filename.lower():
+    clean_path = filename.replace('\\', '/')
+    
+    if "static/audio" in clean_path.lower():
+        url = f"/static/audio/{quote(basename)}"
+    elif "UploadedMP3" in filename or "uploads" in filename.lower():
         rel_path = f"uploads/{basename}"
+        url = f"/api/audio_proxy?path={quote(rel_path)}"
     elif "Recoding" in filename or "records" in filename.lower() or "rec/" in filename.lower():
         rel_path = f"records/{basename}"
+        url = f"/api/audio_proxy?path={quote(rel_path)}"
     elif "tmp" in filename.lower() or "temp" in filename.lower():
         # TTS 或暫存檔
         rel_path = f"temp_audio/{basename}"
+        url = f"/api/audio_proxy?path={quote(rel_path)}"
     else:
         # 預設為根目錄資源
-        rel_path = basename
-        
-    clean_rel = rel_path.replace('\\', '/')
-    url = f"/api/audio_proxy?path={quote(clean_rel)}"
+        url = f"/api/audio_proxy?path={quote(basename)}"
+
     
     # Deduplication - Server-side prevent double broadcast
     now = time.time()
