@@ -25,9 +25,10 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px;
-      background: #1e7bd8;
+      padding: 14px 20px;
+      background: linear-gradient(90deg, #1e7bd8 0%, #0369a1 100%);
       color: #fff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
     header .title {
@@ -469,14 +470,46 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       }
 
-      .pulse {
-        animation: pulse-warn 1.5s infinite;
+      .glass-banner {
+        background: linear-gradient(135deg, rgba(30, 123, 216, 0.1) 0%, rgba(138, 43, 226, 0.1) 100%);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(30, 123, 216, 0.2);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        animation: slideIn 0.5s ease-out;
       }
-      @keyframes pulse-warn {
-        0% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.05); opacity: 0.7; }
-        100% { transform: scale(1); opacity: 1; }
+      @keyframes slideIn {
+        from { transform: translateY(-10px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
       }
+      .glass-banner .icon { font-size: 24px; }
+      .glass-banner .content { flex: 1; }
+      .glass-banner .title { font-weight: 700; color: #1e7bd8; margin-bottom: 2px; font-size: 14px; }
+      .glass-banner .desc { font-size: 12px; color: #4b5563; line-height: 1.4; }
+      
+      .hw-badge {
+        display: flex; align-items: center; gap: 4px;
+        padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+        background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534;
+      }
+      .hw-badge.offline {
+        background: #fff1f2; border: 1px solid #fecdd3; color: #9f1239;
+      }
+      .pulse-dot {
+        width: 8px; height: 8px; border-radius: 50%; background: #22c55e;
+        box-shadow: 0 0 0 rgba(34, 197, 94, 0.4);
+        animation: pulse-green 2s infinite;
+      }
+      @keyframes pulse-green {
+        0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+        70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+      }
+      .hw-badge.offline .pulse-dot { background: #ef4444; animation: none; }
 
 
       `;
@@ -492,6 +525,20 @@
 
           return `
             <div class="app">
+              <div class="glass-banner">
+                <div class="icon">☁️</div>
+                <div class="content">
+                  <div class="title">雲端演示版本 (Cloud Demo Mode)</div>
+                  <div class="desc">
+                    您目前正在瀏覽雲頁面。本系統的<b>實際運作</b>需搭配<strong>實體 USB RELAY 電路控制器</strong>，
+                    才能精準連動實體擴大機 (音響) 電源及訊號路徑切換。
+                  </div>
+                </div>
+                <div class="hw-badge ${s.relay ? '' : 'offline'}">
+                  <div class="pulse-dot"></div>
+                  實體控制器：${s.relay ? '已連線' : '虛擬演示中'}
+                </div>
+              </div>
               <div class="status">
                 <div class="left">
                   <span class="badge">狀態：${this.escape(s.playing || "—")}</span>
@@ -743,7 +790,21 @@
                     <h3>ℹ️ 系統資訊</h3>
                     <div class="row tight"><span class="hint">課表：</span> <span id="ttInfo" class="mono">—</span></div>
                     <div class="row tight"><span class="hint">Relay：</span> <span id="relayInfo" class="mono">—</span></div>
+                  </div>
 
+                  <div class="card" style="margin-top:12px; background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
+                    <h3>🔌 實體硬體聯動說明</h3>
+                    <div style="font-size: 13px; line-height: 1.6; color: #374151;">
+                      <p>為達成<b>真正的廣播與音響電源自動控制</b>，本系統必須搭配專用的 <b>USB RELAY (繼電器) 電路</b>：</p>
+                      <ul style="padding-left: 20px; margin: 8px 0;">
+                        <li><strong>主動供電：</strong> 繼電器會與您的音響放大器電源串接。</li>
+                        <li><strong>自動切換：</strong> 播放時自動透過 USB 指令打開電源音量。</li>
+                        <li><strong>延後休眠：</strong> 播報結束後自動斷電，節省能源並延長壽命。</li>
+                      </ul>
+                      <div class="hint" style="margin-top:8px; display:block; padding: 6px; background:#fff; border-radius:6px; border:1px dashed #d1d5db;">
+                        ⚠️ 雲端網頁僅供音訊演示，實體線路控制僅限於安裝了<b>實體電路主機</b>之環境。
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
