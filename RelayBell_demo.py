@@ -124,6 +124,9 @@ CMD_SOUND_TABLE = {
     "PlayMP3:flagsong.mp3":   "static/audio/flagsong.mp3",
     "PlayMP3:countrysong.mp3": "static/audio/countrysong.mp3",
     "PlayMP3:countrysong_classic.mp3": "static/audio/countrysong_classic.mp3",
+    "PlayMP3:Award.mp3": "static/audio/Award.mp3",
+    "PlayMP3:DoubleHeadedEagle.mp3": "static/audio/DoubleHeadedEagle.mp3",
+    "PlayMP3:MarchDrum.mp3": "static/audio/MarchDrum.mp3",
     "Bell:EarthquakeAlarm": "static/audio/EarthquakeAlarm.mp3",
     "PlayMP3:justearthquakeAlarm.mp3": "static/audio/justearthquakeAlarm.mp3",
     "PlayMP3:mute.mp3": "static/audio/mute.mp3",
@@ -6007,7 +6010,10 @@ def handle_msg(text, addr):
         abs_path = os.path.abspath(rel_path)
         if os.path.isfile(abs_path):
             print(f"[INFO] Directly playing sound for command '{text}': {abs_path}")
-            play_sound(abs_path)
+            if text in ["PlayMP3:Award.mp3", "PlayMP3:DoubleHeadedEagle.mp3", "PlayMP3:MarchDrum.mp3", "PlayMP3:countrysong.mp3", "PlayMP3:countrysong_classic.mp3"]:
+                play_sound(abs_path, wait=False)
+            else:
+                play_sound(abs_path)
         else:
             print(f"[WARN] 音檔不存在: {abs_path}")
         return
