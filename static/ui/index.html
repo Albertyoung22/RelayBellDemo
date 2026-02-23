@@ -182,6 +182,7 @@
         }
 
         connectedCallback() {
+          console.log("[UI] RelayBell Console v2.1.2-GUID Connected");
           this.render();
           this.bind();
           // this.loadLocalSettings(); // Removed memory per user request
@@ -1038,11 +1039,22 @@
           _safeBind("#btn-mp3stop", "click", () => this.postForm("/cmd", { cmd: "MP3Stop" }));
 
           this.shadowRoot.querySelectorAll('[data-cmd]').forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.onclick = () => {
+              if (btn.disabled) return;
               const cmd = btn.getAttribute("data-cmd");
-              console.log("[UI] Sending Component Command:", cmd);
+              console.log("[UI] Command Click:", cmd);
+
+              // Simple debounce
+              btn.disabled = true;
+              btn.style.opacity = "0.5";
+
               this.postForm("/cmd", { cmd: cmd });
-            });
+
+              setTimeout(() => {
+                btn.disabled = false;
+                btn.style.opacity = "1";
+              }, 1500);
+            };
           });
 
           _safeBind("#lang", "change", () => {
@@ -1795,21 +1807,22 @@
         /* ===== /翻譯 ===== */
 
         async postForm(path, kv) {
-          const body = new URLSearchParams();
-          Object.entries(kv).forEach(([k, v]) => body.append(k, String(v)));
           try {
-            // [Fix] Always use API_BASE to ensure path is absolute
+            console.log("[UI] Request:", path, kv);
             const targetUrl = (typeof API_BASE !== 'undefined' && API_BASE ? API_BASE : '') + path;
+
+            const params = new URLSearchParams();
+            for (const k in kv) params.append(k, kv[k]);
+
             await fetch(targetUrl, {
               method: "POST",
               headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body,
+              body: params.toString(),
               cache: "no-store"
             });
             setTimeout(() => this.refreshState(), 400);
           } catch (e) {
-            console.error("Request failed:", e);
-            // alert("請求失敗：" + e.message);
+            console.error("[UI] Request failed:", e);
           }
         }
 
@@ -2057,10 +2070,14 @@
   <audio id="web-audio-player" style="display:none;"></audio>
   <script>
     (function () {
+      const VER = "1.1";
       const API_BASE = (location.protocol === 'file:') ? 'http://localhost:5050' : '';
       let ws;
       const player = document.getElementById('web-audio-player');
       const status = document.getElementById('audio-receiver-status');
+
+      const sessionId = Math.random().toString(36).substring(7);
+      console.log(`[AudioReceiver] Started Session: ${sessionId}`);
 
       let audioQueue = [];
       let isPlaying = false;
@@ -2088,24 +2105,49 @@
           setTimeout(connect, 5000);
         };
 
-        ws.onmessage = (e) => {
+        ws.onmessage = async (e) => {
           if (e.data === "PONG") return;
           try {
             const data = JSON.parse(e.data);
             if (data.type === 'play_audio') {
+              const msgGuid = data.guid || (data.ts + "_" + (data.url || "").split('?')[0]);
+              const key = "played_" + msgGuid;
+
+              // Random stagger (0-200ms) to prevent multiple tabs winning the race
+              await new Promise(r => setTimeout(r, Math.random() * 200));
+
+              if (localStorage.getItem(key)) {
+                console.warn(`[AudioWS][${sessionId}] DEDUPE: Blocked by another tab.`, msgGuid);
+                return;
+              }
+              localStorage.setItem(key, Date.now());
+
+              // Cleanup old keys
               const now = Date.now();
-              if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) return;
-              lastAudioUrl = data.url;
-              lastAudioTs = now;
+              Object.keys(localStorage).forEach(k => {
+                if (k.startsWith('played_')) {
+                  const val = parseInt(localStorage.getItem(k));
+                  if (!isNaN(val) && (now - val) > 60000) localStorage.removeItem(k);
+                }
+              });
+
+              if (data.url === lastAudioUrl && (now - lastAudioTs) < 800) {
+                console.log(`[AudioWS][${sessionId}] LOCAL DEDUPE: Throttle same URL.`, data.url);
+                return;
+              }
+              lastAudioUrl = data.url; lastAudioTs = now;
+
+              console.log(`[AudioWS][${sessionId}] PLAYING:`, data.url);
               audioQueue.push(data.url);
               processQueue();
             } else if (data.type === 'stop_audio') {
-              audioQueue = [];
-              isPlaying = false;
-              player.pause();
-              player.currentTime = 0;
+              console.log(`[AudioWS][${sessionId}] STOP RECEIVED`);
+              audioQueue = []; isPlaying = false;
+              player.pause(); player.currentTime = 0;
             }
-          } catch (err) { }
+          } catch (err) {
+            console.error("[AudioWS] Error:", err);
+          }
         };
       }
 
@@ -2118,6 +2160,8 @@
         player.onended = () => { isPlaying = false; setTimeout(processQueue, 100); };
         player.onerror = () => { isPlaying = false; setTimeout(processQueue, 100); };
 
+        player.muted = false;
+        player.volume = 1.0;
         player.src = url;
         player.play().catch(err => {
           console.warn("[AudioWS] Play blocked", err);

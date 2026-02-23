@@ -379,22 +379,34 @@
         console.log("[AudioWS] Connected");
         heartbeat = setInterval(() => { if (ws.readyState === 1) ws.send("PING"); }, 15000);
       };
+      const audioSessionId = Math.random().toString(36).substring(7);
+      console.log(`[AudioReceiver] Started Session: ${audioSessionId}`);
+
       ws.onmessage = (e) => {
         if (e.data === "PONG") return;
         try {
           const data = JSON.parse(e.data);
           if (data.type === 'play_audio') {
-            const now = Date.now();
-            if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) {
-              console.log("[AudioWS] Duplicated audio blocked:", data.url);
+            const msgGuid = data.guid || (data.ts + "_" + (data.url || "").split('?')[0]);
+            const key = "played_" + msgGuid;
+
+            if (localStorage.getItem(key)) {
+              console.log(`[AudioWS][${audioSessionId}] Dedupe skip:`, msgGuid);
               return;
             }
+            localStorage.setItem(key, "1");
+
+            const now = Date.now();
+            if (data.url === lastAudioUrl && (now - lastAudioTs) < 1000) return;
             lastAudioUrl = data.url; lastAudioTs = now;
-            console.log("[AudioWS] Queued:", data.url);
+
+            console.log(`[AudioWS][${audioSessionId}] Queuing:`, data.url);
             audioQueue.push(data.url);
             processAudioQueue();
           } else if (data.type === 'stop_audio') {
-            audioQueue = []; isPlayingAudio = false; player.pause();
+            console.log(`[AudioWS][${audioSessionId}] Stop signal`);
+            audioQueue = []; isPlayingAudio = false;
+            player.pause(); player.currentTime = 0;
           }
         } catch (err) { }
       };

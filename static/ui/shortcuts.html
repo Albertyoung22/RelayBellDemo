@@ -353,7 +353,7 @@
             <a href="live.html">🔴 直播</a>
             <a href="teacher_call.html" target="_blank">📹 通話</a>
             <a href="shortcuts.html">⚡ 快捷</a>
-      <a href="buddha.html">🕌 佛教</a>
+            <a href="buddha.html">🕌 佛教</a>
             <span class="sep">|</span>
             <a href="clients.html" target="_blank">👥 設備</a>
             <a href="/teacher?key=teacher" target="_blank">🎵 媒體</a>
@@ -881,13 +881,11 @@
         async function deleteUpload(saved) {
             const real = decodeURIComponent(saved);
             if (!confirm(`確定要刪除「${real}」？`)) return;
-            const body = new URLSearchParams();
-            body.append('name', real);
             try {
                 const r = await fetch('/delete', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: body.toString()
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: real })
                 });
                 const j = await r.json().catch(() => ({}));
                 if (j.ok) {
@@ -929,17 +927,12 @@
                 target.textContent = '送出中...';
             }
             try {
-                // Use simple form-data POST to /cmd, same as index.html
-                const body = new URLSearchParams();
-                body.append('cmd', 'CancelALL');
                 const resp = await fetch('/cmd', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: body.toString()
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cmd: 'CancelALL' })
                 });
                 if (!resp.ok && resp.status !== 204) throw new Error('HTTP ' + resp.status);
-                // alert('已送出強制取消指令。'); // index.html doesn't alert usually, but we can keep or remove. 
-                // Let's settle for a console log or non-blocking
                 console.log('Force Cancel sent');
             } catch (e) {
                 alert('送出失敗：' + e.message);

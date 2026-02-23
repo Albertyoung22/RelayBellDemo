@@ -1088,8 +1088,14 @@
         }
 
         function postCmd(cmd) {
-            const params = new URLSearchParams(); params.append('cmd', cmd);
-            fetch(`${API_BASE}/cmd`, { method: 'POST', body: params });
+            console.log("[UI] Request:", cmd);
+            const params = new URLSearchParams();
+            params.append('cmd', cmd);
+            fetch(`${API_BASE}/cmd`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString()
+            });
         }
 
         function stopAll() { postCmd('CancelALL'); stopAudition(); }
@@ -1244,7 +1250,7 @@
                 }
             } catch (e) {
                 console.warn("EdgeTTS Preview failed, fallback to native:", e);
-                // Fallback
+                /* Fallback
                 const u = new SpeechSynthesisUtterance(text);
                 const langMap = {
                     'zh': 'zh-TW', 'en': 'en-US', 'ja': 'ja-JP', 'ko': 'ko-KR',
@@ -1253,11 +1259,12 @@
                 u.lang = langMap[lang] || lang;
                 window.speechSynthesis.cancel();
                 window.speechSynthesis.speak(u);
+                */
             }
         }
 
         function stopAudition() {
-            window.speechSynthesis.cancel();
+            // window.speechSynthesis.cancel();
             const player = $('preview-player');
             if (player) {
                 player.pause();
@@ -1369,19 +1376,30 @@
                     });
                 }
 
+                const sessionId = Math.random().toString(36).substring(7);
+                console.log(`[AudioReceiver] Started Session: ${sessionId}`);
+
                 ws.onmessage = (e) => {
                     if (e.data === "PONG") return;
-                    console.log("[AudioWS] Inbound:", e.data);
                     try {
                         const data = JSON.parse(e.data);
                         if (data.type === 'play_audio') {
+                            const msgGuid = data.guid || (data.ts + "_" + (data.url || "").split('?')[0]);
+                            const key = "played_" + msgGuid;
+
+                            if (localStorage.getItem(key)) {
+                                console.log(`[AudioWS][${sessionId}] Dedupe skip:`, msgGuid);
+                                return;
+                            }
+                            localStorage.setItem(key, "1");
+
+                            console.log(`[AudioWS][${sessionId}] Queuing:`, data.url);
                             audioQueue.push(data.url);
                             processQueue();
                         } else if (data.type === 'stop_audio') {
-                            audioQueue = [];
-                            isPlaying = false;
-                            player.pause();
-                            player.currentTime = 0;
+                            console.log(`[AudioWS][${sessionId}] Stop signal`);
+                            audioQueue = []; isPlaying = false;
+                            player.pause(); player.currentTime = 0;
                         }
                     } catch (err) { }
                 };
