@@ -7545,37 +7545,11 @@ def login_required(f):
 
 
 def admin_required(f):
-
-    """要求管理員或教師權限的裝飾器"""
-
+    """要求管理員或教師權限的裝飾器 (示範模式：強行解鎖)"""
     @wraps(f)
-
     def decorated_function(*args, **kwargs):
-
-        if 'user_id' not in session:
-
-            if _is_api_request():
-
-                return jsonify(ok=False, error="未登錄", need_login=True), 401
-
-            return _login_redirect_response()
-
-        
-
-        role = session.get('role', '')
-
-        if role not in ['admin', 'teacher']:
-
-            if _is_api_request():
-
-                return jsonify(ok=False, error="權限不足"), 403
-
-            return "權限不足", 403
-
-        
-
+        # 展示模式：不檢查 session，直接允許存取
         return f(*args, **kwargs)
-
     return decorated_function
 
 
@@ -7597,196 +7571,40 @@ def teacher_or_admin_required(f):
 
 
 @app.route('/login')
-
 def login_page():
-
-    """登錄頁面"""
-
-    next_param = _safe_next_url(request.args.get('next'))
-
-    # 如果已登錄，重定向到首頁
-
-    if 'user_id' in session:
-
-        if next_param:
-
-            return redirect(next_param)
-
-        # 預設一律帶回新版主控台
-
-        return redirect('/static/ui/index.html')
-
-    return send_from_directory(UI_TEMPLATE_DIR, 'login.html')
+    """登錄頁面 (示範模式：直接進入主控台)"""
+    # 展示模式下不顯示登錄頁面，直接跳轉到主控台
+    return redirect('/static/ui/index.html')
 
 
 
 @app.post('/auth/login')
-
-def auth_login():
-
-    """登錄 API"""
-
-    try:
-
-        data = request.get_json(force=True) or {}
-
-        username = data.get('username', '').strip()
-
-        password = data.get('password', '')
-
-        remember = data.get('remember', False)
-
-        next_hint = _safe_next_url(data.get('next'))
-
-        
-
-        if not username or not password:
-
-            return jsonify(ok=False, error="請輸入帳號和密碼"), 400
-
-        
-
-        # 查找用戶
-
-        user = get_user_by_username(username)
-
-        
-
-        if not user:
-
-            return jsonify(ok=False, error="帳號或密碼錯誤"), 401
-
-        
-
-        # 驗證密碼
-
-        password_hash = user.get('password_hash', '')
-
-        if not verify_password(password, password_hash):
-
-            return jsonify(ok=False, error="帳號或密碼錯誤"), 401
-
-        
-
-        # 設置 Session
-
-        session.permanent = remember
-
-        session['user_id'] = user.get('id')
-
-        session['username'] = user.get('username')
-
-        session['role'] = user.get('role', 'user')
-
-        session['display_name'] = user.get('display_name', username)
-
-        
-
-        # 記錄登錄
-
-        try:
-
-            text_area_insert(f"🔐 用戶登錄：{user.get('display_name')} ({username}) [{user.get('role')}]", "Auth")
-
-        except:
-
-            pass
-
-        
-
-        # 根據角色跳轉
-
-        redirect_url = next_hint or '/static/ui/index.html'
-
-        
-
-        return jsonify(
-
-            ok=True,
-
-            user={
-
-                'id': user.get('id'),
-
-                'username': user.get('username'),
-
-                'role': user.get('role'),
-
-                'display_name': user.get('display_name')
-
-            },
-
-            redirect=redirect_url
-
-        )
-
-    
-
-    except Exception as e:
-
-        print(f"[AUTH] Login error: {e}")
-
-        return jsonify(ok=False, error=f"登錄失敗：{str(e)}"), 500
-
-
+def login_api():
+    """媒體/功能 登入 API (示範模式：自動通過)"""
+    session['user_id'] = 'demo_admin'
+    session['username'] = '展示管理員'
+    session['role'] = 'admin'
+    session.permanent = True
+    return jsonify(ok=True, message="展示模式登錄成功", role='admin', username='展示管理員', user_id='demo_admin')
 
 @app.post('/auth/logout')
-
 def auth_logout():
-
-    """登出 API"""
-
-    username = session.get('username', 'Unknown')
-
-    display_name = session.get('display_name', username)
-
+    """登出 API (示範模式：清空但顯示成功)"""
     session.clear()
-
-    
-
-    try:
-
-        text_area_insert(f"🔓 用戶登出：{display_name} ({username})", "Auth")
-
-    except:
-
-        pass
-
-    
-
     return jsonify(ok=True, message="登出成功")
 
-
-
 @app.get('/auth/status')
-
 def auth_status():
-
-    """獲取當前登錄狀態"""
-
-    if 'user_id' in session:
-
-        return jsonify(
-
-            ok=True,
-
-            logged_in=True,
-
-            user={
-
-                'id': session.get('user_id'),
-
-                'username': session.get('username'),
-
-                'role': session.get('role'),
-
-                'display_name': session.get('display_name')
-
-            }
-
-        )
-
-    return jsonify(ok=True, logged_in=False)
+    """檢索當前用戶登錄狀態 (示範模式：永遠在線)"""
+    return jsonify(
+        ok=True,
+        logged_in=True,
+        user={
+            'id': 'demo_admin',
+            'username': '展示管理員',
+            'role': 'admin'
+        }
+    )
 
 
 
@@ -8959,14 +8777,12 @@ def _client_ip_from_request():
 
 
 @app.get("/")
-
 def home():
-
-    ui_index = os.path.join(UI_TEMPLATE_DIR, "index.html")
-
-    if os.path.exists(ui_index): return redirect("/static/ui/index.html", code=302)
-
-    return jsonify(ok=False, error="未找到 ./static/ui/index.html"), 404
+    # 首頁重定向到介紹頁面 (示範模式)
+    welcome_page = os.path.join(UI_TEMPLATE_DIR, "welcome.html")
+    if os.path.exists(welcome_page):
+        return redirect("/static/ui/welcome.html", code=302)
+    return redirect("/static/ui/index.html", code=302)
 
 
 
