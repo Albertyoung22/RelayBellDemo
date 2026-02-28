@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RelayBell | 智慧校園廣播系統介紹</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+    <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+    <style>
+        :root {
+            --primary: #1e7bd8;
+            --accent: #8a2be2;
+            --bg-dark: #0f172a;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+            color: white;
+            font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+            overflow: hidden;
+        }
+
+        /* Cinema Background */
+        .stage {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            overflow: hidden;
+        }
+
+        /* Scanline effect */
+        .stage::after {
+            content: " ";
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .bg-mesh {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(circle at 20% 30%, rgba(30, 123, 216, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(138, 43, 226, 0.1) 0%, transparent 50%);
+            opacity: 0.5;
+            animation: meshFloat 20s infinite alternate;
+        }
+
+        @keyframes meshFloat {
+            0% {
+                transform: scale(1) translate(0, 0);
+            }
+
+            100% {
+                transform: scale(1.2) translate(2%, 2%);
+            }
+        }
+
+        /* Slide Container */
+        .slide {
+            position: absolute;
+            width: 80%;
+            max-width: 1000px;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            z-index: 5;
+        }
+
+        .active-slide {
+            display: flex;
+            animation: slideIn 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: scale(0.9) translateY(30px);
+                opacity: 0;
+                filter: blur(10px);
+            }
+
+            to {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+                filter: blur(0);
+            }
+        }
+
+        .icon-box {
+            font-size: 120px;
+            color: var(--primary);
+            margin-bottom: 30px;
+            filter: drop-shadow(0 0 30px rgba(30, 123, 216, 0.6));
+            animation: floatIcon 3s ease-in-out infinite;
+        }
+
+        @keyframes floatIcon {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0);
+            }
+
+            50% {
+                transform: translateY(-15px) rotate(5deg);
+            }
+        }
+
+        h1 {
+            font-size: 56px;
+            font-weight: 900;
+            margin-bottom: 20px;
+            line-height: 1.2;
+            background: linear-gradient(45deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 24px;
+            color: #94a3b8;
+            line-height: 1.6;
+            max-width: 800px;
+        }
+
+        /* Media Box */
+        .media-box {
+            margin-top: 40px;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .media-box img {
+            width: 100%;
+            display: block;
+            filter: brightness(0.8);
+            transition: 0.5s;
+        }
+
+        .active-slide .media-box img {
+            filter: brightness(1.1);
+            transform: scale(1.05);
+        }
+
+        /* Controls */
+        .overlay-start {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: 0.8s;
+        }
+
+        .btn-play {
+            background: linear-gradient(45deg, var(--primary), var(--accent));
+            border: none;
+            color: white;
+            padding: 20px 60px;
+            font-size: 24px;
+            font-weight: 700;
+            border-radius: 999px;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(30, 123, 216, 0.4);
+            transition: 0.3s;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(30, 123, 216, 0.6);
+        }
+
+        .progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: var(--primary);
+            width: 0%;
+            transition: width linear;
+            z-index: 20;
+        }
+
+        .skip-btn {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 20;
+        }
+
+        /* Bottom Status */
+        .status-box {
+            position: absolute;
+            bottom: 40px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #64748b;
+            font-size: 14px;
+            z-index: 20;
+        }
+
+        .status-box .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="stage">
+        <div class="bg-mesh"></div>
+
+        <div class="overlay-start" id="startOverlay">
+            <h1 style="margin-bottom: 40px;">🎬 RelayBell 系統導覽</h1>
+            <button class="btn-play" id="btnPlay">開始播放介紹</button>
+            <p style="margin-top: 20px; font-size: 16px;">播放時會開啟神祕電子配樂與智慧語音導覽</p>
+        </div>
+
+        <button class="skip-btn" id="btnSkip" style="display:none;">結束介紹</button>
+
+        <!-- Slide 1: Welcome -->
+        <div class="slide" id="slide1">
+            <div class="icon-box"><iconify-icon icon="solar:star-fall-bold-duotone"></iconify-icon></div>
+            <h1>歡迎使用 RelayBell</h1>
+            <p>這是一場校園廣播的數位革命。我們將帶您體驗結合了 AI、物聯網與雲端控制的現代化播報方案。</p>
+            <div class="media-box"><img src="relaybell_hero_concept_1772293809252.png"></div>
+        </div>
+
+        <!-- Slide 2: AI Voice -->
+        <div class="slide" id="slide2">
+            <div class="icon-box"><iconify-icon icon="solar:volume-loud-bold-duotone"></iconify-icon></div>
+            <h1>AI 頂級語音合成</h1>
+            <p>告別生硬的機械音。內建高品質 AI 語音合成與多語種翻譯，提供最具質感的真人發聲，讓播報更具親和力與專業感。</p>
+            <div class="media-box"><img src="ai_voice_synthesis_concept_1772297268982.png"></div>
+        </div>
+
+        <!-- Slide 3: Native Language -->
+        <div class="slide" id="slide3">
+            <div class="icon-box"><iconify-icon icon="solar:globus-bold-duotone"></iconify-icon></div>
+            <h1>本土語與全球化播報</h1>
+            <p>支援台語播報並整合自動翻譯。讓校園廣播成為傳承母語與接觸國際語言的最佳平台。</p>
+            <div class="media-box"><img src="taiwan_native_language_broadcast_1772297288482.png"></div>
+        </div>
+
+        <!-- Slide 4: Smart Relay -->
+        <div class="slide" id="slide4">
+            <div class="icon-box"><iconify-icon icon="solar:bolt-bold-duotone"></iconify-icon></div>
+            <h1>智慧物聯網控制</h1>
+            <p>透過精確的 USB Relay 技術，系統廣播前自動連動實體擴大機電源。不僅節能省電，更能確保每一句廣播都完整傳遞。</p>
+            <div class="media-box"><img src="iot_smart_relay_circuit_1772297304457.png"></div>
+        </div>
+
+        <!-- Slide 5: Automated Schedule -->
+        <div class="slide" id="slide5">
+            <div class="icon-box"><iconify-icon icon="solar:calendar-date-bold-duotone"></iconify-icon></div>
+            <h1>智慧自動化排程</h1>
+            <p>整合校園課表，自動定時播放鐘聲、音樂與氣象資訊。系統無需人工看守，即可精準執行每日播報任務。</p>
+            <div class="media-box"><img src="automated_campus_schedule_1772297320828.png"></div>
+        </div>
+
+        <!-- Slide 6: Media Content Functions -->
+        <div class="slide" id="slide6">
+            <div class="icon-box"><iconify-icon icon="solar:music-notes-bold-duotone"></iconify-icon></div>
+            <h1>全方位媒體內容控制</h1>
+            <p>內建強大媒體面板，支援 MP3、線上串流、YouTube 轉播與 Spotify 廣播。無論是課間音樂還是大型集會，都能輕鬆駕馭。</p>
+            <div class="media-box"><img src="multimedia_broadcast_control_panel_1772299165367.png"></div>
+        </div>
+
+        <!-- Slide 7: EEW Integration -->
+        <div class="slide" id="slide7">
+            <div class="icon-box"><iconify-icon icon="solar:shield-warning-bold-duotone"></iconify-icon></div>
+            <h1>中央氣象署地震連動</h1>
+            <p>關鍵時刻，分秒必爭。系統同步串接國家級地震預警（EEW），一旦偵測門檻達標，立即自動開啟廣播並播放疏散引導。</p>
+            <div class="media-box"><img src="earthquake_early_warning_system_1772297338428.png"></div>
+        </div>
+
+        <!-- Slide 8: Silent Broadcast -->
+        <div class="slide" id="slide8">
+            <div class="icon-box"><iconify-icon icon="solar:monitor-bold-duotone"></iconify-icon></div>
+            <h1>無聲視覺看板</h1>
+            <p>數位轉型校園。一鍵推播文字、圖片與影片至學生裝置螢幕，實現安靜且高效的視覺訊息傳播。</p>
+            <div class="media-box"><img src="silent_visual_broadcast_signage_1772297355676.png"></div>
+        </div>
+
+        <!-- Slide 9: Mobile Control -->
+        <div class="slide" id="slide9">
+            <div class="icon-box"><iconify-icon icon="solar:smartphone-bold-duotone"></iconify-icon></div>
+            <h1>手機隨身遙控</h1>
+            <p>打破空間門檻。手機即是無線麥克風，隨時隨地開啟直播、對講或啟動全校廣播，掌握第一時間的溝通契機。</p>
+            <div class="media-box"><img src="mobile_remote_broadcast_app_1772297430608.png"></div>
+        </div>
+
+        <!-- Slide 10: Video Intercom -->
+        <div class="slide" id="slide10">
+            <div class="icon-box"><iconify-icon icon="solar:videocamera-record-bold-duotone"></iconify-icon></div>
+            <h1>WebRTC 視訊對講</h1>
+            <p>雙向視訊、一鍵通話。讓行政中心與教室之間建立高品質、低延遲的影音連結，滿足多元溝通需求。</p>
+            <div class="media-box"><img src="webrtc_video_intercom_school_1772297377433.png"></div>
+        </div>
+
+        <!-- Slide 11: UI/UX -->
+        <div class="slide" id="slide11">
+            <div class="icon-box"><iconify-icon icon="solar:widget-3-bold-duotone"></iconify-icon></div>
+            <h1>現代化玻璃擬態介面</h1>
+            <p>優雅的外觀，直覺的操作。我們採用最前端的 Glassmorphism 設計語彙，讓管理廣播系統也成為一種享受。</p>
+            <div class="media-box"><img src="premium_glassmorphism_ui_design_1772297399538.png"></div>
+        </div>
+
+        <!-- Slide 12: Ready -->
+        <div class="slide" id="slide12">
+            <div class="icon-box"><iconify-icon icon="solar:check-circle-bold-duotone"></iconify-icon></div>
+            <h1>準備好開始了嗎？</h1>
+            <p>最先進的校園廣播技術，正在您的主控台等待開啟。讓我們一起打造智慧、效率、且具質感的播報體驗。</p>
+            <button class="btn-play" style="margin-top:20px; padding: 15px 40px;"
+                onclick="window.location.href='index.html'">進入智慧主控台</button>
+        </div>
+
+        <div class="status-box" id="statusBox" style="display:none;">
+            <div class="dot"></div>
+            <span id="narratorState">導覽播放中...</span>
+        </div>
+
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <script>
+        const slides = [
+            { id: 'slide1', text: "歡迎來到 RelayBell 智慧校園廣播系統。這是一場校園廣播的數位革命。我們將帶您體驗結合了 AI、物聯網與雲端控制的現代化播報方案。" },
+            { id: 'slide2', text: "首先是 AI 頂級語音合成。告別生硬的機械音。我們內建了高品質智慧語音，提供最具真實質感的播報聲，並支援多國語言翻譯，讓溝通跨越語言障礙。" },
+            { id: 'slide3', text: "特別值得一提的是本土語播報。系統整合了專業的台語語音合成，協助校園傳達親切的本土語言，並自動生成播報稿件。" },
+            { id: 'slide4', text: "接著是硬體控制核心。廣播時系統透過 USB Relay 技術自動連動實體擴大機。不僅達成節能環保，更確保了播報的第一個字都能精準傳遞。" },
+            { id: 'slide5', text: "在自動化方面，系統整合了校園課表，能自動播放鐘聲、背景音樂與即時氣象資訊。即便無需人工看守，也能確保校園運作精準準時。" },
+            { id: 'slide6', text: "在內容管理上，全方位媒體控制面板支援線上音樂、YouTube 轉播與多樣化的數位媒體，讓校園活動的播音更加豐富多元。" },
+            { id: 'slide7', text: "校園安全是我們的重中之重。RelayBell 串接中央氣象署地震預警系統，在強震來襲前自動開啟強迫廣播，並播放專業的避難引導音訊。" },
+            { id: 'slide8', text: "進入數位轉型時代，無聲視覺看板功能，讓您一鍵即可將文字與圖文訊息推播至學生裝置螢幕。實現效率與安靜並存的視覺廣播體驗。" },
+            { id: 'slide9', text: "最後是強大的手機隨身遙控。打破固定廣播室的限制。拿起手機，校園的每個角落都是您的廣播站，讓行動力成就高效管理。" },
+            { id: 'slide10', text: "系統還具備 WebRTC 雙向視訊功能。行政端可一鍵對教室發起視訊通話，讓校園內的影音溝通即時、穩定且毫無阻礙。" },
+            { id: 'slide11', text: "所有的功能都收納在精美的玻璃擬態介面中。直覺、優雅且高效。讓管理人員在藝術般的介面中完成複雜的廣播任務。" },
+            { id: 'slide12', text: "深度介紹到此結束。RelayBell 已經準備就緒，請點擊按鈕，開啟您的智慧校園新生活吧。" }
+        ];
+
+        let currentIdx = 0;
+        let bgm = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3');
+        bgm.loop = true;
+        bgm.volume = 0.15;
+
+        document.getElementById('btnPlay').addEventListener('click', startPresentation);
+        document.getElementById('btnSkip').addEventListener('click', () => window.location.href = 'index.html');
+
+        async function startPresentation() {
+            // Initialize BGM on user gesture
+            try {
+                await bgm.play();
+                console.log("BGM started");
+            } catch (e) {
+                console.warn("BGM autoplay blocked or failed:", e);
+                // Try one more time specifically on click
+                bgm.play();
+            }
+
+            document.getElementById('startOverlay').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('startOverlay').style.display = 'none';
+            }, 800);
+
+            document.getElementById('btnSkip').style.display = 'block';
+            document.getElementById('statusBox').style.display = 'flex';
+
+            runSequence();
+        }
+
+        async function runSequence() {
+            for (currentIdx = 0; currentIdx < slides.length; currentIdx++) {
+                await showSlide(slides[currentIdx]);
+            }
+        }
+
+        async function showSlide(slideData) {
+            // UI Switch
+            document.querySelectorAll('.slide').forEach(s => s.classList.remove('active-slide'));
+            const currentSlideEl = document.getElementById(slideData.id);
+            if (currentSlideEl) currentSlideEl.classList.add('active-slide');
+
+            // Reset progress bar
+            const bar = document.getElementById('progressBar');
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+
+            // Start speaking and wait for it to finish
+            const audioPromise = speak(slideData.text);
+
+            // We'll approximate the progress bar to the audio duration if possible, 
+            // but since we don't know it until it loads, we'll just wait for the promise.
+            await audioPromise;
+
+            // Brief pause between slides
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        function speak(text) {
+            return new Promise(async (resolve) => {
+                try {
+                    const response = await fetch('/api/tts_preview', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            text: text,
+                            lang: 'zh-TW-HsiaoChenNeural',
+                            rate: '0%',
+                            gender: 'female'
+                        })
+                    });
+
+                    if (!response.ok) throw new Error("API fail");
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const audio = new Audio(url);
+
+                    // Track audio duration for progress bar
+                    audio.onloadedmetadata = () => {
+                        const bar = document.getElementById('progressBar');
+                        bar.style.transition = `width ${audio.duration}s linear`;
+                        bar.style.width = '100%';
+                    };
+
+                    audio.onended = () => {
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    };
+                    audio.play();
+                } catch (e) {
+                    console.error("TTS Error:", e);
+                    // Fallback to browser TTS if API fails
+                    const msg = new SpeechSynthesisUtterance(text);
+                    msg.lang = 'zh-TW';
+                    msg.onend = () => resolve();
+                    window.speechSynthesis.speak(msg);
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
