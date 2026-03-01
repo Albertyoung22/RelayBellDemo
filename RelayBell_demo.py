@@ -3137,13 +3137,20 @@ RELAY4_INFO = {
 
 
 
+RELAY4_PORT = None
+
 def _relay4_set(key, val):
+    global RELAY4_PORT
     RELAY4_INFO[key] = val
     RELAY4_INFO["last_update_ts"] = time.time()
     # ✅ 同步更新到全域 STATE 以便 /state API 返回
     if "relay4" not in STATE: STATE["relay4"] = {}
+    
+    # 這裡使用 globals().get 是為了徹底防止初始化順序導致的 NameError
+    _current_p = RELAY4_INFO.get("port") or globals().get("RELAY4_PORT") or ""
+
     STATE["relay4"] = {
-        "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+        "port": _current_p,
         "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
         "last_cmd": RELAY4_INFO.get("last_cmd"),
         "last_result": RELAY4_INFO.get("last_result"),
