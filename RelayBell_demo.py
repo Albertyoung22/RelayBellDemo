@@ -810,27 +810,29 @@ def _is_frozen():
 
 
 def resource_path(relative_path: str) -> str:
-
+    """
+    Resolve resource path for both script and frozen (PyInstaller) modes.
+    Adds heuristic to find audio files in 'static/audio' even if prefix is missing.
+    """
     if getattr(sys, "frozen", False):
-
         exe_dir = os.path.dirname(sys.executable)
-
         p1 = os.path.join(exe_dir, relative_path)
-
         if os.path.exists(p1): return p1
-
         if hasattr(sys, "_MEIPASS"):
-
             p2 = os.path.join(sys._MEIPASS, relative_path)
-
             if os.path.exists(p2): return p2
-
+        # Fallback for audio in frozen app
+        basename = os.path.basename(relative_path)
+        p3 = os.path.join(exe_dir, "static", "audio", basename)
+        if os.path.exists(p3): return p3
         return p1
 
     base = os.path.abspath(os.path.dirname(__file__))
     p = os.path.join(base, relative_path)
     if not os.path.exists(p):
-        p_static = os.path.join(base, "static", "audio", relative_path)
+        # Heuristic: if file not found, try stripping directory and looking in static/audio
+        basename = os.path.basename(relative_path)
+        p_static = os.path.join(base, "static", "audio", basename)
         if os.path.exists(p_static): return p_static
     return p
 
@@ -3414,6 +3416,7 @@ RELAY_ACTIVE_LOCK = threading.RLock()
 # [NEW] Relay Config Persistence
 RELAY_CONFIG_PATH = Path(DATA_DIR) / "relay_config.json"
 RELAY_AUTO_ON = True
+RELAY_OFF_DELAY = 0.5  # 最終保險延遲 (play_sound 內部已有 1.5 秒 browser 緩衝)
 
 def _save_relay_config():
     try:
@@ -3451,6 +3454,7 @@ def relay_acquire(tag: str = "") -> bool:
             if RELAY_AUTO_ON:
                 first_open = True
                 control_usb_relay("ON")
+                control_usb_relay4(1, True)
             else:
                 _diag(f"[Relay] acquire({tag}) but Auto-On disabled. Skipping ON.")
 
@@ -3459,18 +3463,30 @@ def relay_acquire(tag: str = "") -> bool:
 
 
 def relay_release(tag: str = ""):
-
     global RELAY_ACTIVE_CNT
-
+    import datetime as _dt
     with RELAY_ACTIVE_LOCK:
-
         RELAY_ACTIVE_CNT = max(0, RELAY_ACTIVE_CNT - 1)
+        if RELAY_ACTIVE_CNT > 0:
+            print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] relay_release({tag}): cnt={RELAY_ACTIVE_CNT}, still held")
+            return
 
+    # We reached 0. 
+    print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] relay_release({tag}): cnt=0, will OFF after {RELAY_OFF_DELAY}s")
+    if not RELAY_AUTO_ON:
+        _diag(f"[Relay] release({tag}) but Auto-On disabled. Skipping OFF.")
+        return
+
+    # Wait for browser buffer/latency (OUTSIDE LOCK)
+    if RELAY_OFF_DELAY > 0:
+        time.sleep(RELAY_OFF_DELAY)
+    
+    # Final check if it's still 0
+    with RELAY_ACTIVE_LOCK:
         if RELAY_ACTIVE_CNT == 0:
-            if RELAY_AUTO_ON:
-                control_usb_relay("OFF")
-            else:
-                _diag(f"[Relay] release({tag}) but Auto-On disabled. Skipping OFF.")
+            print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] relay_release({tag}): Sending OFF to hardware")
+            control_usb_relay("OFF")
+            control_usb_relay4(1, False)
 
 
 
@@ -3479,10 +3495,9 @@ def relay_force_off():
     global RELAY_ACTIVE_CNT
 
     with RELAY_ACTIVE_LOCK:
-
         RELAY_ACTIVE_CNT = 0
-
     control_usb_relay("OFF")
+    control_usb_relay4(1, False)
 
 
 
@@ -3658,22 +3673,34 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
             
         # 1. Local Playback Removed - Fully Web-based now
 
-        # 2. Progress Calculation
+        # 2. Progress Calculation  (精準時長偵測)
         if not duration_estimate or duration_estimate <= 0:
             try:
                 if real_path.lower().endswith(".mp3"):
+                    # 方法一：mutagen 精準讀取
                     try:
                         from mutagen.mp3 import MP3
                         duration_estimate = MP3(real_path).info.length
-                    except: duration_estimate = 3.5
+                        print(f"[Speaker] Duration (mutagen): {duration_estimate:.2f}s  ← {os.path.basename(real_path)}")
+                    except Exception as _mu_err:
+                        # 方法二：依檔案大小估算 (128kbps 為 EdgeTTS 標準位元率)
+                        print(f"[Speaker] mutagen 失敗: {_mu_err}  → 改用大小估算")
+                        try:
+                            _sz = os.path.getsize(real_path)
+                            duration_estimate = _sz * 8 / 128000  # 128kbps
+                            print(f"[Speaker] Duration (size {_sz}B @ 128kbps): {duration_estimate:.2f}s  ← {os.path.basename(real_path)}")
+                        except:
+                            duration_estimate = 8.0  # 安全預設值
                 elif real_path.lower().endswith(".wav"):
                     import wave
                     with wave.open(real_path, 'rb') as wf:
                         duration_estimate = wf.getnframes() / float(wf.getframerate())
+                    print(f"[Speaker] Duration (wave): {duration_estimate:.2f}s  ← {os.path.basename(real_path)}")
                 else:
-                    duration_estimate = 2.0
-            except:
-                duration_estimate = 3.0
+                    duration_estimate = 5.0
+            except Exception as _dur_err:
+                print(f"[Speaker] Duration detection error: {_dur_err}")
+                duration_estimate = 8.0
         
         if duration_estimate < 0.5: duration_estimate = 0.5
         
@@ -3686,18 +3713,32 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
             
         ui_safe(_set_progress, 0); STATE["progress"] = 0
         t = 0
+        interrupted = False
         while t < duration_estimate:
             # Check for interrupt
             if stop_playback_event.is_set() and not ignore_interrupt:
                 stop_web_audio()
+                interrupted = True
                 break
             time.sleep(0.1)
             t += 0.1
             percent = min(100, int(100*t/duration_estimate))
             ui_safe(_set_progress, percent); STATE["progress"] = percent
+        
+        # [KEY FIX] 等待瀏覽器端真正播完 (網路延遲 + 緩衝啟動 + 播放殘留)
+        # 不管音訊長短，瀏覽器從收到指令到播完都需要額外時間
+        if not interrupted:
+            BROWSER_AUDIO_TAIL = 2.5  # 秒：給瀏覽器的額外緩衝時間 (從 1.5 增為 2.5)
+            tail_t = 0
+            while tail_t < BROWSER_AUDIO_TAIL:
+                if stop_playback_event.is_set() and not ignore_interrupt:
+                    break
+                time.sleep(0.1)
+                tail_t += 0.1
             
         ui_safe(_set_progress, 100); STATE["progress"] = 100
-        print(f"[Speaker] 播放完成: {filename}")
+        import datetime as _dt
+        print(f"[Speaker] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] play_sound DONE: {os.path.basename(filename)} (duration={duration_estimate:.1f}s + 1.5s tail)")
     except Exception as e:
         print(f"[RedirAudio] Play error: {e}")
 
@@ -4275,7 +4316,14 @@ def auto_unmute_if_needed():
 @with_relay_playback
 def taigi_play_wav_with_fx(path):
     """台語合成完成後，套用『直接播放』規格：Relay 開→前導→內容→結束→Relay 關。"""
+    relay_acquired = False
     try:
+        # Precision: Activate Relay only when audio is ready
+        if not relay_acquired:
+            first = relay_acquire("taigi_play_wav_with_fx")
+            relay_acquired = True
+            if first: time.sleep(2.5) # Warmup amp
+
         auto_unmute_if_needed()
         ui_safe(set_playing_status, f" 台語播放：{os.path.basename(path)}")
         # 前導音
@@ -4303,7 +4351,9 @@ def taigi_play_wav_with_fx(path):
              print(f"[Chime] Taigi end error: {e}")
 
         ui_safe(set_playing_status, "✅ 台語播放完成")
-    except Exception as e:
+    finally:
+        if relay_acquired:
+            relay_release("taigi_play_wav_with_fx")
         text_area_insert(f"❌ 台語播放例外：{e}")
 
 def tts_full_play(text, force_chime_off=False): asyncio.run(speak_text_async(text, force_chime_off))
@@ -4657,8 +4707,8 @@ def _piper_run_to_wav(text: str, out_wav: str, lang_code: str = None) -> tuple[b
 
 
 async def speak_text_async(text, force_chime_off=False):
-    first = relay_acquire("speak_text_async")
-    if first: await asyncio.sleep(3)
+    # [Precision] Defer relay_acquire until synthesis is ready
+    relay_acquired = False
     try:
         should_chime = CHIME_ENABLED and (not force_chime_off)
         # 🆕 Debug Chime to UI Area
@@ -4778,6 +4828,12 @@ async def speak_text_async(text, force_chime_off=False):
                 melo_model.tts_to_file(text, melo_speaker_id, wav_path, speed=speed_factor)
                 
                 if os.path.exists(wav_path) and os.path.getsize(wav_path) > 0:
+                     # Precision: Activate Relay only when audio is ready
+                     if not relay_acquired:
+                         first = relay_acquire("speak_text_async_melo")
+                         relay_acquired = True
+                         if first: await asyncio.sleep(2.5) # Warmup amp
+
                      ui_safe(set_playing_status, f"🔊 MeloTTS 播放中...")
                      try:
                         # Log chime status
@@ -4961,6 +5017,12 @@ async def speak_text_async(text, force_chime_off=False):
                     if not os.path.exists(mp3_path) or os.path.getsize(mp3_path) == 0:
                         raise RuntimeError("edge-tts returned empty file")
 
+                    # Precision: Activate Relay only when audio is ready
+                    if not relay_acquired:
+                        first = relay_acquire("speak_text_async_edge")
+                        relay_acquired = True
+                        if first: await asyncio.sleep(2.5) # Warmup amp
+
                     if stop_playback_event.is_set() or voice_muted:
                         try: os.remove(mp3_path)
                         except Exception: pass
@@ -5074,6 +5136,11 @@ async def speak_text_async(text, force_chime_off=False):
             gTTS(text, lang=t_lang).save(tmp)
 
             if not (stop_playback_event.is_set() or voice_muted):
+                # Precision: Activate Relay only when audio is ready
+                if not relay_acquired:
+                    first = relay_acquire("speak_text_async_gtts")
+                    relay_acquired = True
+                    if first: await asyncio.sleep(2.5) # Warmup amp
 
                 # [Chime] gTTS
                 if should_chime and START_SOUND and os.path.isfile(START_SOUND):
@@ -5133,6 +5200,12 @@ async def speak_text_async(text, force_chime_off=False):
                     wav_path = fp.name
                 ok, log = _piper_run_to_wav(text, wav_path, lang_code=lang)
                 if ok:
+                    # Precision: Activate Relay only when audio is ready
+                    if not relay_acquired:
+                        first = relay_acquire("speak_text_async_piper")
+                        relay_acquired = True
+                        if first: await asyncio.sleep(2.5) # Warmup amp
+
                     if stop_playback_event.is_set() or voice_muted:
                         try: os.remove(wav_path)
                         except: pass
@@ -5203,7 +5276,10 @@ async def speak_text_async(text, force_chime_off=False):
 
         ui_safe(_set_progress, 0); STATE["progress"] = 0
     finally:
-        relay_release("speak_text_async")
+        if relay_acquired:
+            import datetime as _dt
+            print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] speak_text_async FINALLY: calling relay_release (relay_acquired={relay_acquired})")
+            relay_release("speak_text_async")
 
 
 
