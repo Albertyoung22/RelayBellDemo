@@ -4647,6 +4647,8 @@ def _piper_run_to_wav(text: str, out_wav: str, lang_code: str = None) -> tuple[b
 
 
 async def speak_text_async(text, force_chime_off=False):
+    first = relay_acquire("speak_text_async")
+    if first: await asyncio.sleep(3)
     try:
         should_chime = CHIME_ENABLED and (not force_chime_off)
         # Parse Per-Message Metadata: {{L=xx|G=xx}}text
@@ -5181,6 +5183,8 @@ async def speak_text_async(text, force_chime_off=False):
         ui_safe(set_playing_status, "❌ 朗讀失敗")
 
         ui_safe(_set_progress, 0); STATE["progress"] = 0
+    finally:
+        relay_release("speak_text_async")
 
 
 
