@@ -1103,25 +1103,52 @@ def api_speak_v2():
 
 @app.route('/api/get_relay_config')
 def api_get_relay_config():
-    return jsonify(ok=True, auto_on=RELAY_AUTO_ON)
+    return jsonify(
+        ok=True, 
+        auto_on=RELAY_AUTO_ON, 
+        port=RELAY_PORT, 
+        relay4_port=RELAY4_PORT,
+        ports=RELAY_INFO.get("ports", [])
+    )
 
 @app.route('/api/set_relay_config', methods=['POST'])
 def api_set_relay_config():
-    global RELAY_AUTO_ON
+    global RELAY_AUTO_ON, RELAY_PORT, RELAY4_PORT
     try:
         data = request.json or {}
+        
+        # Handle Auto-On
         val = data.get('auto_on')
         if val is not None:
              RELAY_AUTO_ON = bool(val)
              _save_relay_config()
-             
-             # Sync Tkinter if running
              try:
                  if 'relay_auto_var' in globals():
                      ui_safe(lambda: relay_auto_var.set(RELAY_AUTO_ON))
              except: pass
-             
-        return jsonify(ok=True, auto_on=RELAY_AUTO_ON)
+
+        # Handle Port (Single)
+        port_val = data.get('port')
+        if port_val is not None:
+            RELAY_PORT = str(port_val) if port_val else None
+            try:
+                cfg = DIAG_DIR / "relay_port.txt"
+                if RELAY_PORT: cfg.write_text(RELAY_PORT, encoding="utf-8")
+                elif cfg.exists(): cfg.unlink()
+            except: pass
+            _relay_set("port", RELAY_PORT)
+
+        # Handle Port (4-Relay)
+        port4_val = data.get('relay4_port')
+        if port4_val is not None:
+            RELAY4_PORT = str(port4_val) if port4_val else None
+            try:
+                cfg = DIAG_DIR / "relay4_port.txt"
+                if RELAY4_PORT: cfg.write_text(RELAY4_PORT, encoding="utf-8")
+                elif cfg.exists(): cfg.unlink()
+            except: pass
+            
+        return jsonify(ok=True, auto_on=RELAY_AUTO_ON, port=RELAY_PORT, relay4_port=RELAY4_PORT)
     except Exception as e:
         return jsonify(ok=False, error=str(e)), 500
 
@@ -2774,6 +2801,8 @@ def _relay_set(key, val):
 
         "ts": RELAY_INFO.get("last_update_ts"),
 
+        "status": RELAY_INFO.get("status", "OFF")
+
     }
 
     try:
@@ -2859,8 +2888,12 @@ def get_manual_relay_port():
 
 
 def auto_detect_lcus_port(max_wait_s: float = 8.0):
-
     manual = get_manual_relay_port()
+    # 🆕 徹底防止背景探測試圖開啟 Serial Port
+    if manual in ("DISABLED", "NONE"):
+        print(">>> [Relay] Backend Serial Access is CRITICALLY DISABLED (Web Direct Mode)")
+        _relay_set("status", "DISABLED")
+        return "DISABLED"
 
     if manual:
 
@@ -2954,15 +2987,56 @@ RELAY_PORT = get_manual_relay_port() or auto_detect_lcus_port()
 
 def control_usb_relay(status, retries=5):
     global RELAY_PORT
-    # Bypass actual hardware control
-    _relay_set("last_cmd", f"Write:{status} (Mocked)")
-    _relay_set("last_result", "OK")
-    _relay_set("last_error", "")
     
-    save_to_csv(f"Relay set to {status} (Mocked)", "System", status)
-    ui_safe(lambda: status_label.config(text=f" 語音啟用中，繼電器：{status} (模擬)"))
-    print(f"[Relay] Mocked control_usb_relay: {status}")
-    return
+    # 🆕 Check if disabled for Web Serial Mode
+    if RELAY_PORT in ("DISABLED", "NONE"):
+        msg = f"[Relay] Backend control is DISABLED. Skipping physical {status} - Port released for Browser."
+        print(msg)
+        text_area_insert(msg, "RELY")
+        _relay_set("last_cmd", f"Skip:{status} (WebMode)")
+        # 🆕 Still update status so Web UI can sync it to local hardware
+        _relay_set("status", status)
+        return False
+    
+    # Auto-detect if port is missing
+    if not RELAY_PORT:
+        RELAY_PORT = auto_detect_lcus_port()
+        print(f"[Relay] Auto-detected port: {RELAY_PORT}")
+    
+    # Update UI state
+    _relay_set("last_cmd", f"Write:{status}")
+    _relay_set("status", status)
+    
+    if not RELAY_PORT:
+        _relay_set("last_result", "FAIL")
+        _relay_set("last_error", "No available COM port")
+        save_to_csv(f"Relay set to {status} (FAILED: No Port)", "System", status)
+        ui_safe(lambda: status_label.config(text=f" ❌ 無法偵測到繼電器 (COM)"))
+        print(f"[Relay] control_usb_relay: FAILED - No COM port found.")
+        return False
+
+    # LCUS Protocol: A0 [CH] [STATUS] [SUM]
+    # Sum = (A0 + CH + STATUS) & 0xFF
+    cmd = b"\xA0\x01\x01\xA2" if status == "ON" else b"\xA0\x01\x00\xA1"
+    
+    try:
+        import serial
+        with RELAY_LOCK:
+            with serial.Serial(RELAY_PORT, 9600, timeout=1.0) as ser:
+                ser.write(cmd)
+                _relay_set("last_result", "OK")
+                _relay_set("last_error", "")
+                save_to_csv(f"Relay set to {status}", "System", status)
+                ui_safe(lambda: status_label.config(text=f" 語音啟用中，繼電器：{status}"))
+                print(f"[Relay] Port {RELAY_PORT} set to {status} (SUCCESS)")
+                return True
+    except Exception as e:
+        _relay_set("last_result", "FAIL")
+        _relay_set("last_error", str(e))
+        save_to_csv(f"Relay control failed: {e}", "System", "Failed")
+        ui_safe(lambda: status_label.config(text="❌ 繼電器控制失敗"))
+        print(f"[Relay] Port {RELAY_PORT} control error: {e}")
+        return False
 
     save_to_csv("Relay control failed", "System", "Failed")
 
@@ -3091,11 +3165,13 @@ def get_manual_relay4_port():
 
 
 def auto_detect_4relay_port(max_wait_s: float = 8.0):
+    manual = get_manual_relay4_port()
+    # 🆕 徹底防止 4-Relay 背景探測
+    if manual in ("DISABLED", "NONE"):
+        print(">>> [4R] 4-Relay Backend Serial Access is CRITICALLY DISABLED")
+        return "DISABLED"
 
     """4-Relay 自動掃描：盡量找「不是單 Relay」的 CH34x COM。"""
-
-    manual = get_manual_relay4_port()
-
     if manual:
 
         with RELAY4_LOCK:
@@ -3271,17 +3347,49 @@ def control_usb_relay4(ch: int, on: bool, retries: int = 5, port_override: str |
     if ch not in (1, 2, 3, 4):
         raise ValueError("ch 必須是 1~4")
 
-    # Bypass actual hardware control
-    _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'} (Mocked)")
+    if RELAY4_PORT in ("DISABLED", "NONE"):
+        msg = f"[4R] Backend control is DISABLED. Skipping CH{ch} - Port released for Browser."
+        print(msg)
+        text_area_insert(msg, "RELY")
+        # Update status/state anyway so Web UI can sync
+        st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
+        st[int(ch)] = 1 if on else 0
+        _relay4_set("ch_state", st)
+        _relay4_set("status", "ON" if any(st.values()) else "OFF")
+        return False
+
+    target_port = port_override or RELAY4_PORT or auto_detect_4relay_port()
     
-    st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
-    st[int(ch)] = 1 if on else 0
-    _relay4_set("ch_state", st)
-    _relay4_set("last_result", "OK")
-    _relay4_set("last_error", "")
-    ui_safe(refresh_relay4_ui)
-    print(f"[4R] Mocked control_usb_relay4: CH{ch}={'ON' if on else 'OFF'}")
-    return True
+    # Update state
+    _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'}")
+    
+    if not target_port:
+        _relay4_set("last_result", "FAIL")
+        _relay4_set("last_error", "No COM port")
+        return False
+
+    # Protocol: A0 [CH] [STATUS] [SUM]
+    sum_val = (0xA0 + ch + (1 if on else 0)) & 0xFF
+    cmd = bytes([0xA0, ch, 1 if on else 0, sum_val])
+    
+    try:
+        import serial
+        with RELAY4_LOCK:
+            with serial.Serial(target_port, 9600, timeout=1.0) as ser:
+                ser.write(cmd)
+                st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
+                st[int(ch)] = 1 if on else 0
+                _relay4_set("ch_state", st)
+                _relay4_set("last_result", "OK")
+                _relay4_set("last_error", "")
+                ui_safe(refresh_relay4_ui)
+                print(f"[4R] Port {target_port} CH{ch} set to {'ON' if on else 'OFF'} (SUCCESS)")
+                return True
+    except Exception as e:
+        _relay4_set("last_result", "FAIL")
+        _relay4_set("last_error", str(e))
+        print(f"[4R] Port {target_port} control error: {e}")
+        return False
 
 
 
@@ -6048,12 +6156,16 @@ def handle_msg(text, addr):
 
 
 
+    if text == "RelayRescan":
+        text_area_insert(f" 重新掃描 USB 繼電器裝置 (by {sender})")
+        threading.Thread(target=auto_detect_lcus_port, daemon=True).start()
+        threading.Thread(target=auto_detect_4relay_port, daemon=True).start()
+        save_to_csv("RelayRescan", sender, ip=sender_ip)
+        return
+
     if text == "ScheduleEnable":
-
         timetable_enabled = True; STATE["timetable"]["enabled"] = True
-
         if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 課表：啟用")
-
         return
 
 
@@ -15886,6 +15998,11 @@ try:
             last_missing_log = 0
             
             while self.running:
+                # 🆕 Skip if disabled
+                if self.port in ("DISABLED", "NONE", "", None):
+                    time.sleep(5)
+                    continue
+
                 try:
                     # Check if port exists first to avoid spamming "FileNotFoundError"
                     params = [p.device for p in list_ports.comports()]
