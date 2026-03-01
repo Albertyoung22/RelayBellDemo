@@ -477,7 +477,17 @@ def _save_chime_config():
             json.dump({"enabled": CHIME_ENABLED}, f)
     except: pass
 
-
+def _save_voice_config():
+    """Missing function to save voice settings"""
+    try:
+        _v_p = os.path.join(DATA_DIR, "voice_config.json")
+        data = {
+            "rate": globals().get("voice_rate", "+0%"),
+            "volume": globals().get("voice_volume", 100)
+        }
+        with open(_v_p, "w") as f:
+            json.dump(data, f)
+    except: pass
 
 
 # ==== [schedules 防呆 JSON 解析工具] ====
@@ -818,8 +828,11 @@ def resource_path(relative_path: str) -> str:
         return p1
 
     base = os.path.abspath(os.path.dirname(__file__))
-
-    return os.path.join(base, relative_path)
+    p = os.path.join(base, relative_path)
+    if not os.path.exists(p):
+        p_static = os.path.join(base, "static", "audio", relative_path)
+        if os.path.exists(p_static): return p_static
+    return p
 
 
 
@@ -1214,8 +1227,8 @@ def api_set_chime_config():
         val = data.get('enabled')
         if val is not None:
              CHIME_ENABLED = bool(val)
-             # Save to voice config (reuse existing persistence)
-             _save_voice_config()
+             # Save to chime config (reuse existing persistence)
+             _save_chime_config()
              
              # Sync Tkinter if running
              try:
@@ -2545,7 +2558,7 @@ _sender_ctx = threading.local()
 
 CONFIG_FILE = "sound_config.json"
 
-DEFAULT_CONFIG = {"start_sound":"beforemic.mp3","end_sound":"beforemic2.mp3","mute_sound":"mute.mp3", "use_ai_generation": True}
+DEFAULT_CONFIG = {"start_sound":"static/audio/beforemic.mp3","end_sound":"static/audio/beforemic2.mp3","mute_sound":"static/audio/mute.mp3", "use_ai_generation": True}
 
 
 
@@ -4259,9 +4272,6 @@ def auto_unmute_if_needed():
 
 
 
-
-
-@with_relay_playback
 @with_relay_playback
 def taigi_play_wav_with_fx(path):
     """台語合成完成後，套用『直接播放』規格：Relay 開→前導→內容→結束→Relay 關。"""
@@ -4651,6 +4661,15 @@ async def speak_text_async(text, force_chime_off=False):
     if first: await asyncio.sleep(3)
     try:
         should_chime = CHIME_ENABLED and (not force_chime_off)
+        # 🆕 Debug Chime to UI Area
+        msg = f"[DEBUG] speak_text_async: CHIME={should_chime} (EF={CHIME_ENABLED}), START={os.path.basename(START_SOUND) if START_SOUND else 'None'}, END={os.path.basename(END_SOUND) if END_SOUND else 'None'}"
+        text_area_insert(msg, "TTS")
+        
+        if should_chime:
+            if not (START_SOUND and os.path.exists(START_SOUND)):
+                text_area_insert(f"⚠️ 前導音檔案不存在: {START_SOUND}", "TTS")
+            if not (END_SOUND and os.path.exists(END_SOUND)):
+                text_area_insert(f"⚠️ 結束音檔案不存在: {END_SOUND}", "TTS")
         # Parse Per-Message Metadata: {{L=xx|G=xx}}text
         local_lang = None
         local_gender = None
