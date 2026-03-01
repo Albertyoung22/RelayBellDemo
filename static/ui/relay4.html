@@ -579,14 +579,34 @@
       _ws4.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
+          // 支援兩類訊息：專屬的 relay4_state 或通用狀態廣播
+          let targetState = null;
           if (msg.type === 'relay4_state' && msg.ch_state) {
-            updateChStatus(msg.ch_state);
+            targetState = msg.ch_state;
+          } else if (msg.relay4 && msg.relay4.ch_state) {
+            targetState = msg.relay4.ch_state;
+          }
+
+          if (targetState) {
+            updateChStatus(targetState);
             if (msg.last_cmd) {
               document.getElementById('lastStatus').textContent = '即時同步：' + msg.last_cmd;
             }
-            log('[即時] 狀態已同步', false);
+            // 🆕 如果本地有連線 Web Serial，也在此同步硬體
+            if (_serialWriter) {
+              for (let ch = 1; ch <= 4; ch++) {
+                const serverOn = (targetState[ch] === 1 || targetState[String(ch)] === 1);
+                if (this._lastLocalChSync && this._lastLocalChSync[ch] !== serverOn) {
+                  sendSerialBytes(ch, serverOn);
+                  this._lastLocalChSync[ch] = serverOn;
+                }
+              }
+            }
+            log('[即時] 狀態已由伺服器同步', false);
           }
-        } catch (e) { }
+        } catch (e) {
+          console.error("WS Parse Error", e);
+        }
       };
 
       _ws4.onerror = () => {
