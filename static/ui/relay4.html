@@ -255,6 +255,7 @@
         <span class="label">指定 COM（僅顯示偵測到的 USB Relay）：</span>
         <select id="portSelect" class="select-port">
           <option value="">自動偵測</option>
+          <option value="DISABLED">🔒 網頁直接控制 (停用後端)</option>
         </select>
         <button class="btn-port" onclick="applyPortSelection()">套用</button>
         <button class="btn-port secondary" onclick="clearPort()">清除指定</button>
@@ -266,6 +267,17 @@
         <span style="font-size:11px;color:#6b7280;">（請避免選到同一顆 COM）</span>
       </div>
       <div id="lastStatus" style="font-size:12px;color:#555;flex-basis:100%;margin-top:4px;">&nbsp;</div>
+
+      <!-- 🆕 Web Serial for Local Control (Cloud Demo Mode Support) -->
+      <div id="webSerialBox"
+        style="margin-top:12px; padding:10px; background:#f0f9ff; border:1px solid #7dd3fc; border-radius:8px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div style="font-size:13px; font-weight:700; color:#0369a1;">🔗 瀏覽器直接控制本機 USB：</div>
+        <button class="btn-port" id="btnConnectSerial" onclick="connectSerial()">🔌 連接本機 USB 繼電器</button>
+        <button class="btn-port warn" id="btnDisconnectSerial" style="display:none; background:#dc2626;"
+          onclick="disconnectSerial()">斷開連線</button>
+        <span id="serialStatus" style="font-size:12px; color:#666;">（狀態：未連接）</span>
+        <div style="font-size:11px; color:#64748b; flex-basis:100%;">提示：即使程式跑在雲端 Render，連上後您仍可在此控制接在您這台電腦上的實體硬體。</div>
+      </div>
     </div>
 
     <div class="cards">
@@ -311,6 +323,54 @@
 
   <script>
     let currentPort = '';
+    let _serialPort = null;
+    let _serialWriter = null;
+
+    // 🆕 Web Serial Logic
+    async function connectSerial() {
+      if (!navigator.serial) {
+        alert("您的瀏覽器不支援 Web Serial API，請使用 Chrome / Edge。");
+        return;
+      }
+      try {
+        _serialPort = await navigator.serial.requestPort();
+        await _serialPort.open({ baudRate: 9600 });
+        _serialWriter = _serialPort.writable.getWriter();
+
+        document.getElementById('serialStatus').textContent = "🟢 已連線";
+        document.getElementById('serialStatus').style.color = "#059669";
+        document.getElementById('btnConnectSerial').style.display = "none";
+        document.getElementById('btnDisconnectSerial').style.display = "inline-block";
+        log("Web Serial: 已成功連線到本機 USB 裝置", false);
+      } catch (e) {
+        log("Web Serial 連線失敗: " + e.message, true);
+      }
+    }
+
+    async function disconnectSerial() {
+      try {
+        if (_serialWriter) { _serialWriter.releaseLock(); _serialWriter = null; }
+        if (_serialPort) { await _serialPort.close(); _serialPort = null; }
+      } catch (e) { }
+      document.getElementById('serialStatus').textContent = "（狀態：未連接）";
+      document.getElementById('serialStatus').style.color = "";
+      document.getElementById('btnConnectSerial').style.display = "inline-block";
+      document.getElementById('btnDisconnectSerial').style.display = "none";
+      log("Web Serial: 已斷開連線", false);
+    }
+
+    async function sendSerialBytes(ch, on) {
+      if (!_serialWriter) return;
+      // Protocol: A0 [CH] [STATUS] [SUM]
+      const bytes = [0xA0, ch, on ? 1 : 0, (0xA0 + ch + (on ? 1 : 0)) & 0xFF];
+      try {
+        await _serialWriter.write(new Uint8Array(bytes));
+        console.log("Web Serial Sent:", bytes);
+      } catch (e) {
+        log("Web Serial 寫入失敗: " + e.message, true);
+        disconnectSerial();
+      }
+    }
 
     function log(msg, isError) {
       const box = document.getElementById('logLines');
@@ -331,6 +391,11 @@
       optAuto.value = '';
       optAuto.textContent = '自動偵測';
       sel.appendChild(optAuto);
+
+      const optDisable = document.createElement('option');
+      optDisable.value = 'DISABLED';
+      optDisable.textContent = '🔒 網頁直接控制 (停用後端)';
+      sel.appendChild(optDisable);
 
       if (!Array.isArray(ports) || ports.length === 0) {
         const optNo = document.createElement('option');
@@ -381,12 +446,16 @@
       if (!v) {
         currentPort = '';
         log('4-Relay COM 改為「自動偵測」模式', false);
+      } else if (v === 'DISABLED') {
+        currentPort = 'DISABLED';
+        log('⚠️ 已停用 4-Relay 後端控制，此時瀏覽器可搶佔序列埠進行直接控制', false);
       } else {
         currentPort = v;
         log('已指定 4-Relay COM：' + v, false);
       }
       fetchStatus();
     }
+    Assistant
 
     function clearPort() {
       currentPort = '';
@@ -448,6 +517,11 @@
     }
 
     async function setRelay(ch, on) {
+      // 🆕 Mirror to local serial if connected
+      if (_serialWriter) {
+        sendSerialBytes(ch, on);
+      }
+
       try {
         const payload = { ch, on };
         if (currentPort) payload.port = currentPort;

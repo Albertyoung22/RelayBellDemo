@@ -432,6 +432,31 @@
           <pre id="cwaDiagOut"
             style="background:#f7f9fc;border:1px solid #d9e8fb;padding:8px;white-space:pre-wrap"></pre>
         </details>
+
+        <!-- 🆕 Web Serial for Local Control (Cloud Demo Mode Support) -->
+        <div class="card" style="margin-top:12px; border: 2px solid #1e7bd8; background: #f0f7ff;">
+          <h3>🔗 瀏覽器直接控制 USB Relay (Web Serial)</h3>
+          <div style="font-size: 13px; margin-bottom: 10px; color: #1e40af;">
+            即使在雲端測試，您也可以透過瀏覽器直接連動您的實體硬體。
+          </div>
+
+          <div
+            style="margin-bottom: 12px; background: #fff; padding: 8px; border-radius: 4px; border: 1px solid #d1d5db;">
+            <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 4px;">後端控制設定：</label>
+            <div style="display: flex; gap: 4px;">
+              <select id="selRelayPort" style="flex: 1; padding: 4px; font-size: 12px; border: 1px solid #ccc;">
+                <option value="">(自動偵測)</option>
+                <option value="DISABLED">🔒 網頁直接控制 (停用後端)</option>
+              </select>
+              <button id="btnRefreshRelayPorts" class="ghost" style="padding: 2px 6px;">🔄</button>
+            </div>
+          </div>
+          <div class="btns">
+            <button id="btnConnectSerial" class="primary" style="flex:1;">🔌 連接本機 USB</button>
+            <button id="btnDisconnectSerial" class="warn" style="display:none; flex:1;">斷開本機連線</button>
+          </div>
+          <div id="serialStatus" class="hint" style="margin-top:8px; display:block; font-weight:bold;">狀態：未連接</div>
+        </div>
       </section>
 
       <!-- 右欄：先顯示事件清單，再放說明與快速檢查 -->
@@ -618,6 +643,90 @@
       btnForceCancel: $('#btnForceCancel')
     };
 
+    let _serialPort = null;
+    let _serialWriter = null;
+
+    // 🆕 Web Serial Logic
+    async function connectSerial() {
+      if (!navigator.serial) {
+        alert("您的瀏覽器不支援 Web Serial API，請使用 Chrome / Edge。並確保使用 HTTPS。");
+        return;
+      }
+      try {
+        _serialPort = await navigator.serial.requestPort();
+        await _serialPort.open({ baudRate: 9600 });
+        _serialWriter = _serialPort.writable.getWriter();
+
+        $('#serialStatus').textContent = "狀態：🟢 已建立本機硬體連線";
+        $('#serialStatus').style.color = "#166534";
+        $('#btnConnectSerial').style.display = "none";
+        $('#btnDisconnectSerial').style.display = "block";
+        console.log("[WebSerial] Connected.");
+        // Test OFF
+        sendWebRelayCommand("RelayOff");
+      } catch (e) {
+        alert("Web Serial 連線失敗: " + e.message);
+      }
+    }
+
+    async function disconnectSerial() {
+      try {
+        if (_serialWriter) { _serialWriter.releaseLock(); _serialWriter = null; }
+        if (_serialPort) { await _serialPort.close(); _serialPort = null; }
+      } catch (e) { }
+      $('#serialStatus').textContent = "狀態：未連接";
+      $('#serialStatus').style.color = "";
+      $('#btnConnectSerial').style.display = "block";
+      $('#btnDisconnectSerial').style.display = "none";
+    }
+
+    async function sendWebRelayCommand(cmd) {
+      if (!_serialWriter) return;
+      let bytes = null;
+      if (cmd === "RelayOn" || cmd === "TestON") bytes = [0xA0, 0x01, 0x01, 0xA2];
+      else if (cmd === "RelayOff" || cmd === "TestOFF") bytes = [0xA0, 0x01, 0x00, 0xA1];
+
+      if (bytes) {
+        try {
+          await _serialWriter.write(new Uint8Array(bytes));
+          console.log("[WebSerial] Executed local command:", cmd);
+        } catch (e) {
+          console.error("[WebSerial] Write failed", e);
+          disconnectSerial();
+        }
+      }
+    }
+
+    async function fetchRelayConfig() {
+      try {
+        const r = await fetch('/api/get_relay_config');
+        const j = await r.json();
+        if (j.ok) {
+          const sel = document.getElementById('selRelayPort');
+          if (sel && j.ports) {
+            sel.innerHTML = '<option value="">(自動偵測)</option><option value="DISABLED">🔒 網頁直接控制 (停用後端)</option>';
+            j.ports.forEach(p => {
+              const op = document.createElement("option");
+              op.value = p[0];
+              op.textContent = `${p[0]} - ${p[1]}`;
+              sel.appendChild(op);
+            });
+            sel.value = j.port || "";
+          }
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function setRelayConfig(settings) {
+      try {
+        await fetch('/api/set_relay_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
+      } catch (e) { console.error(e); }
+    }
+
     const LSKEY = "eew_settings_v6"; // Bump version
     let timer = null, lastId = null;
     let cachedRows = [];
@@ -737,6 +846,21 @@
 
     // [Added] Auto-refresh text view during poll
     async function pollOnce() {
+      // 🆕 Web Serial Cloud-to-Local Sync Logic
+      try {
+        const rState = await fetch('/state', { cache: 'no-store' });
+        const s = await rState.json();
+        if (s.relay && _serialWriter) {
+          const serverOn = (s.relay.status === "ON");
+          // Use a global _lastLocalSyncState to avoid repeat commands
+          if (window._lastLocalSyncState !== serverOn) {
+            console.log("[Sync] Server relay status changed to:", serverOn ? "ON" : "OFF");
+            sendWebRelayCommand(serverOn ? "RelayOn" : "RelayOff");
+            window._lastLocalSyncState = serverOn;
+          }
+        }
+      } catch (e) { console.error("Sync fetch error:", e); }
+
       // Always update CWA text view
       if (typeof loadCwaRecentSimple === 'function') {
         await loadCwaRecentSimple(true);
@@ -855,31 +979,76 @@
       await pushOne(cachedRows[0]);
     });
 
-    // 測試
-    el.btnEewTest.addEventListener('click', async () => {
-      try {
-        if (el.eewStopAll.checked) {
-          await http('/cmd', { method: 'POST', form: { cmd: 'CancelALL' } });
-        }
-        await http('/special', { method: 'POST', form: { msg: 'ShowMsg:【測試】地震警報，請保持冷靜並尋找掩蔽。' } });
-        await http('/cmd', { method: 'POST', form: { cmd: 'PlayMP3:' + (el.eewMp3.value || 'justEarthquakeAlarm.mp3') } });
-        toast('已推送測試警報');
-      } catch (e) {
-        console.error(e);
-      }
-    });
+    if (el.btnEewTest) {
+      el.btnEewTest.addEventListener('click', async () => {
+        // Mirror to local serial if connected
+        sendWebRelayCommand("RelayOn");
+
+        const dummy = {
+          id: "TEST-" + Date.now(),
+          time: new Date(),
+          mag: 5.5,
+          location: "測試震央",
+          depth: 20,
+          intensity: el.eewMinInt.value,
+          src: "TEST"
+        };
+        const msg = fillTpl(dummy);
+        // post to server
+        const r = await fetch("/special", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ type: "quake_all", msg: "ShowMsg:" + msg, sound: el.eewMp3.value })
+        });
+        const j = await r.json();
+        if (j.ok) toast("測試警報已送出 (Server)");
+        else alert("失敗: " + (j.error || "?"));
+      });
+    }
+
+    if (el.btnPushLatest) {
+      el.btnPushLatest.addEventListener('click', async () => {
+        // Mirror to local serial if connected
+        sendWebRelayCommand("RelayOn");
+
+        try {
+          const r = await fetch("/quake/state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ push_now: true })
+          });
+          const j = await r.json();
+          if (j.ok) toast("已成功推播 (Server)");
+        } catch (e) { console.error(e); }
+      });
+    }
 
     // ★ 新增：強制取消按鍵事件（直接送 CancelALL）
     if (el.btnForceCancel) {
       el.btnForceCancel.addEventListener('click', async () => {
-        try {
-          await http('/cmd', { method: 'POST', form: { cmd: 'CancelALL' } });
-          toast('已送出 CancelALL 強制取消指令');
-        } catch (e) {
-          console.error(e);
-        }
+        // Mirror to local serial if connected
+        sendWebRelayCommand("RelayOff");
+
+        const r = await fetch("/cmd", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ cmd: "CancelALL" })
+        });
+        const j = await r.json();
+        if (j.ok) toast("已送出強制取消 (Server)");
       });
     }
+
+    // Bind Web Serial buttons
+    if ($('#btnConnectSerial')) $('#btnConnectSerial').addEventListener('click', connectSerial);
+    if ($('#btnDisconnectSerial')) $('#btnDisconnectSerial').addEventListener('click', disconnectSerial);
+
+    fetchRelayConfig();
+    if ($('#selRelayPort')) $('#selRelayPort').addEventListener('change', (e) => setRelayConfig({ port: e.target.value }));
+    if ($('#btnRefreshRelayPorts')) $('#btnRefreshRelayPorts').addEventListener('click', async () => {
+      await fetch('/cmd', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'cmd=RelayRescan' });
+      fetchRelayConfig();
+    });
 
     // /state ping（右欄）
     el.btnPing.addEventListener('click', async () => {

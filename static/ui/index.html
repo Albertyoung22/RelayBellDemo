@@ -207,7 +207,7 @@
           this.fetchRelayConfig();  // 🆕 Sync relay config
           this.fetchChimeConfig();  // 🆕 Sync chime config
           this.refreshState();
-          this._timer = setInterval(() => this.refreshState(), 2000);
+          this._timer = setInterval(() => this.refreshState(), 1000);
         }
 
         disconnectedCallback() {
@@ -794,35 +794,64 @@
                     </div>
                   </div>
     
-                  <div class="card" style="margin-top:12px;">
-                    <h3>📢 擴大機設定</h3>
-                    <div class="row">
-                      <label class="small" style="flex:1;">自動啟動擴大機</label>
-                      <input id="chkAutoRelay" type="checkbox" />
+                    <div class="card" style="margin-top:12px;">
+                      <h3>📢 擴大機設定</h3>
+                      <div class="row">
+                        <label class="small">USB Relay 埠 (COM)</label>
+                        <div style="display:flex; gap:8px; width:100%;">
+                          <select id="selRelayPort" style="flex:1;">
+                            <option value="">(自動偵測)</option>
+                            <option value="DISABLED">🔒 網頁直接控制 (停用後端)</option>
+                          </select>
+                          <button id="btn-refresh-relay-ports" class="ghost" style="padding:4px 8px;">🔄</button>
+                        </div>
+                      </div>
+                      <div class="row" style="margin-top:4px;">
+                        <label class="small" style="flex:1;">自動啟動擴大機</label>
+                        <input id="chkAutoRelay" type="checkbox" />
+                      </div>
+                      <div class="btns" style="margin-top:12px;">
+                        <button id="btn-relay-on" class="secondary" style="background:#166534; color:white;">⚡ 手動開啟</button>
+                        <button id="btn-relay-off" class="ghost">🔌 手動關閉</button>
+                      </div>
+                      <div class="row tight" style="margin-top:8px;">
+                        <button id="btn-force-disable-backend" class="warn" style="width:100%; border-radius:4px; font-weight:700; background:#991b1b; color:white;">🛑 停止後端硬體連線 (釋放 Port)</button>
+                      </div>
+                      <div class="row tight"><span class="hint">說明：手動或自動控制實體 USB Relay 繼電器電源。選擇「停用後端」後，網頁前端才能成功連接本機硬體。</span></div>
                     </div>
-                    <div class="row tight"><span class="hint">說明：若勾選，播放時將自動開啟擴大機電源。</span></div>
-                  </div>
 
                   <div class="card" style="margin-top:12px;">
                     <h3>ℹ️ 系統資訊</h3>
                     <div class="row tight"><span class="hint">課表：</span> <span id="ttInfo" class="mono">—</span></div>
-                    <div class="row tight"><span class="hint">Relay：</span> <span id="relayInfo" class="mono">—</span></div>
+                    <div class="row tight"><span class="hint">Relay：</span> <a href="relay4.html" id="relayInfo" class="mono" style="color:#1e7bd8; text-decoration:underline; font-weight:bold;">— (點此進入分區控制)</a></div>
                   </div>
 
-                  <div class="card" style="margin-top:12px; background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
-                    <h3>🔌 實體硬體聯動說明</h3>
-                    <div style="font-size: 13px; line-height: 1.6; color: #374151;">
-                      <p>為達成<b>真正的廣播與音響電源自動控制</b>，本系統必須搭配專用的 <b>USB RELAY (繼電器) 電路</b>：</p>
-                      <ul style="padding-left: 20px; margin: 8px 0;">
-                        <li><strong>主動供電：</strong> 繼電器會與您的音響放大器電源串接。</li>
-                        <li><strong>自動切換：</strong> 播放時自動透過 USB 指令打開電源音量。</li>
-                        <li><strong>延後休眠：</strong> 播報結束後自動斷電，節省能源並延長壽命。</li>
-                      </ul>
-                      <div class="hint" style="margin-top:8px; display:block; padding: 6px; background:#fff; border-radius:6px; border:1px dashed #d1d5db;">
-                        ⚠️ 雲端網頁僅供音訊演示，實體線路控制僅限於安裝了<b>實體電路主機</b>之環境。
+                    <div class="card" style="margin-top:12px; border: 2px solid #1e7bd8; background: #f0f7ff;">
+                      <h3>🔗 瀏覽器直接控制 USB Relay (Web Serial)</h3>
+                      <div style="font-size: 13px; margin-bottom: 10px; color: #1e40af;">
+                        即使在雲端演示模式，您也可以讓瀏覽器直接控制<b>插在您這台電腦上</b>的 USB 繼電器。
+                      </div>
+                      <div class="btns">
+                        <button id="btn-web-serial-connect" class="primary" style="flex:1;">🔌 連接本機 USB</button>
+                        <button id="btn-web-serial-disconnect" class="warn" style="display:none; flex:1;">斷開本機連線</button>
+                      </div>
+                      <div id="web-serial-status" class="hint" style="margin-top:8px; display:block; font-weight:bold;">狀態：未連接</div>
+                    </div>
+
+                    <div class="card" style="margin-top:12px; background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
+                      <h3>🔌 實體硬體聯動說明</h3>
+                      <div style="font-size: 13px; line-height: 1.6; color: #374151;">
+                        <p>為達成<b>真正的廣播與音響電源自動控制</b>，本系統必須搭配專用的 <b>USB RELAY (繼電器) 電路</b>：</p>
+                        <ul style="padding-left: 20px; margin: 8px 0;">
+                          <li><strong>主動供電：</strong> 繼電器會與您的音響放大器電源串接。</li>
+                          <li><strong>自動切換：</strong> 播放時自動透過 USB 指令打開電源音量。</li>
+                          <li><strong>延後休眠：</strong> 播報結束後自動斷電，節省能源並延長壽命。</li>
+                        </ul>
+                        <div class="hint" style="margin-top:8px; display:block; padding: 6px; background:#fff; border-radius:6px; border:1px dashed #d1d5db;">
+                          ⚠️ 雲端網頁僅供音訊演示，實體線路控制僅限於安裝了<b>實體電路主機</b>之環境。
+                        </div>
                       </div>
                     </div>
-                  </div>
                 </div>
               </div>
 
@@ -887,31 +916,80 @@
               this.state.relay_auto = j.auto_on;
               const chk = this.shadowRoot.getElementById('chkAutoRelay');
               if (chk) chk.checked = !!j.auto_on;
+
+              const sel = this.shadowRoot.getElementById('selRelayPort');
+              if (sel && j.ports) {
+                sel.innerHTML = '<option value="">(自動偵測)</option><option value="DISABLED">🔒 網頁直接控制 (停用後端)</option>';
+                j.ports.forEach(p => {
+                  const op = document.createElement("option");
+                  op.value = p[0];
+                  op.textContent = `${p[0]} - ${p[1]}`;
+                  sel.appendChild(op);
+                });
+                sel.value = j.port || "";
+              }
             }
           } catch (e) { console.error("Fetch relay config failed", e); }
         }
 
-        async setRelayConfig(enabled) {
+        async setRelayConfig(settings) {
           try {
             const r = await fetch('/api/set_relay_config', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ auto_on: enabled })
+              body: JSON.stringify(settings)
             });
             const j = await r.json();
             if (j.ok) {
-              console.log("Relay config updated:", j.auto_on);
-              this.state.relay_auto = j.auto_on; // Update internal state
+              console.log("Relay config updated:", j);
+              if (j.auto_on !== undefined) this.state.relay_auto = j.auto_on;
+              this.refreshState();
             } else {
               alert("更新設定失敗：" + (j.error || "Unknown"));
-              // Revert checkbox if failed
-              const chk = this.shadowRoot.getElementById('chkAutoRelay');
-              if (chk) chk.checked = !enabled;
+              this.fetchRelayConfig();
             }
           } catch (e) {
             console.error("Set relay config failed", e);
-            alert("網路錯誤，無法更新設定");
+            this.fetchRelayConfig();
           }
+        }
+
+        async postForm(url, data) {
+          try {
+            const body = new URLSearchParams();
+            for (let k in data) body.append(k, data[k]);
+
+            // 🆕 Mirror to local Web Serial if connected
+            if (data.cmd) {
+              this.sendWebRelayCommand(data.cmd);
+            }
+
+            const r = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body
+            });
+            return await r.json();
+          } catch (e) {
+            console.error("postForm failed", e);
+            // Optionally handle silent failure for commands if serial is used
+          }
+        }
+
+        async postJSON(url, data) {
+          try {
+            // 🆕 If it's a speech or bell command and Web Serial is active, auto-trigger Relay ON
+            if (this._serialWriter && (url.includes("speak") || url.includes("say") || (data && data.cmd && data.cmd.startsWith("Bell:")))) {
+              this.sendWebRelayCommand("RelayOn");
+            }
+
+            const r = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+            });
+            return await r.json();
+          } catch (e) { console.error("postJSON failed", e); }
         }
 
         async fetchChimeConfig() {
@@ -1019,8 +1097,34 @@
 
           // 🆕 Auto Relay Checkbox
           _safeBind("#chkAutoRelay", "change", (e) => {
-            this.setRelayConfig(e.target.checked);
+            this.setRelayConfig({ auto_on: e.target.checked });
           });
+
+          // 🆕 Relay Port Dropdown
+          _safeBind("#selRelayPort", "change", (e) => {
+            this.setRelayConfig({ port: e.target.value });
+          });
+
+          _safeBind("#btn-refresh-relay-ports", "click", async () => {
+            const btn = this.shadowRoot.querySelector("#btn-refresh-relay-ports");
+            btn.disabled = true;
+            btn.textContent = "⌛";
+            await this.postForm("/cmd", { cmd: "RelayRescan" });
+            await this.fetchRelayConfig();
+            btn.disabled = false;
+            btn.textContent = "🔄";
+          });
+
+          _safeBind("#btn-force-disable-backend", "click", async () => {
+            if (confirm("確定要完全停止後端對硬體的控制嗎？這將會釋放 COM 埠供網頁直接控制。")) {
+              await this.setRelayConfig({ port: 'DISABLED', relay4_port: 'DISABLED' });
+              alert("後端連線已切斷！現在您可以點擊下方的「連接本機 USB」按鈕。");
+            }
+          });
+
+          // 🆕 Manual Relay Control
+          _safeBind("#btn-relay-on", "click", () => this.postForm("/cmd", { cmd: "RelayOn" }));
+          _safeBind("#btn-relay-off", "click", () => this.postForm("/cmd", { cmd: "RelayOff" }));
 
           // 🆕 氣象文字
           _safeBind("#btn-weather-text", "click", async () => {
@@ -1172,7 +1276,85 @@
             });
           }
 
+          // 🆕 Web Serial Connection
+          _safeBind("#btn-web-serial-connect", "click", () => this.connectWebSerial());
+          _safeBind("#btn-web-serial-disconnect", "click", () => this.disconnectWebSerial());
+
           this.refreshFiles();
+        }
+
+        // ===== Web Serial Logic =====
+        async connectWebSerial() {
+          const $ = (s) => this.shadowRoot.querySelector(s);
+          if (!navigator.serial) {
+            alert("您的瀏覽器不支援 Web Serial API。請使用 Chrome 或 Edge 瀏覽器，並確保使用 HTTPS 連線。");
+            return;
+          }
+          try {
+            this._serialPort = await navigator.serial.requestPort();
+            await this._serialPort.open({ baudRate: 9600 });
+            this._serialWriter = this._serialPort.writable.getWriter();
+
+            $("#web-serial-status").textContent = "狀態：🟢 已建立本機硬體連線";
+            $("#web-serial-status").style.color = "#166534";
+            $("#btn-web-serial-connect").style.display = "none";
+            $("#btn-web-serial-disconnect").style.display = "block";
+
+            console.log("[WebSerial] Port opened successfully.");
+            // Send a test 'OFF' just to initialize
+            await this.sendWebRelayCommand("RelayOff");
+          } catch (e) {
+            console.error("[WebSerial] Connect error:", e);
+            alert("無法開啟序列埠：" + e.message);
+          }
+        }
+
+        async disconnectWebSerial() {
+          const $ = (s) => this.shadowRoot.querySelector(s);
+          try {
+            if (this._serialWriter) {
+              this._serialWriter.releaseLock();
+              this._serialWriter = null;
+            }
+            if (this._serialPort) {
+              await this._serialPort.close();
+              this._serialPort = null;
+            }
+          } catch (e) { console.warn(e); }
+
+          $("#web-serial-status").textContent = "狀態：未連接";
+          $("#web-serial-status").style.color = "";
+          $("#btn-web-serial-connect").style.display = "block";
+          $("#btn-web-serial-disconnect").style.display = "none";
+        }
+
+        async sendWebRelayCommand(cmd) {
+          if (!this._serialWriter) return;
+
+          let bytes = null;
+          // Standard LCUS / USB Relay Protocol
+          if (cmd === "RelayOn" || cmd === "TestON") {
+            bytes = [0xA0, 0x01, 0x01, 0xA2];
+          } else if (cmd === "RelayOff" || cmd === "TestOFF") {
+            bytes = [0xA0, 0x01, 0x00, 0xA1];
+          } else if (cmd.startsWith("Relay4Set:")) {
+            // Relay4Set:CH:ON|OFF
+            const parts = cmd.split(":");
+            const ch = parseInt(parts[1]);
+            const on = parts[2] === "ON";
+            // Chars for 4-CH (A0 [CH] [STATUS] [SUM])
+            bytes = [0xA0, ch, on ? 1 : 0, (0xA0 + ch + (on ? 1 : 0)) & 0xFF];
+          }
+
+          if (bytes) {
+            try {
+              await this._serialWriter.write(new Uint8Array(bytes));
+              console.log("[WebSerial] Executed local command:", cmd, bytes);
+            } catch (e) {
+              console.error("[WebSerial] Write failed", e);
+              this.disconnectWebSerial();
+            }
+          }
         }
 
         // ===== Recording Logic =====
@@ -1502,6 +1684,16 @@
           }
         }
 
+        // Assuming this._timer is initialized elsewhere, e.g., in connectedCallback
+        // The instruction implies setting the interval here or nearby.
+        // For the purpose of this edit, I'll assume the instruction wants to ensure
+        // the interval is set to 1000ms and the sync logic is updated.
+        // If this._timer is not set in connectedCallback, it should be added there.
+        // For now, I'll just ensure the refreshState logic is updated and assume
+        // the timer setup is handled or implied by the instruction's context.
+        // If this was a full class, I'd put `this._timer = setInterval(() => this.refreshState(), 1000);`
+        // in `connectedCallback` and `clearInterval(this._timer)` in `disconnectedCallback`.
+
         async refreshState() {
           try {
             const r = await fetch("/state", { cache: "no-store" });
@@ -1510,6 +1702,31 @@
 
             this.state = Object.assign({}, this.state, s || {});
 
+            // 🆕 Web Serial Cloud-to-Local Sync Logic
+            if (this._serialWriter) {
+              // 1-CH Relay Sync
+              if (s.relay && s.relay.status) {
+                const serverOn = (s.relay.status === "ON");
+                if (this._lastLocalSyncState !== serverOn) {
+                  console.log("[Sync] Server relay status changed to:", serverOn ? "ON" : "OFF");
+                  this.sendWebRelayCommand(serverOn ? "RelayOn" : "RelayOff");
+                  this._lastLocalSyncState = serverOn;
+                }
+              }
+              // 4-CH Relay Sync
+              if (s.relay4 && s.relay4.ch_state) {
+                const st = s.relay4.ch_state;
+                if (!this._lastChState) this._lastChState = {};
+                for (let ch = 1; ch <= 4; ch++) {
+                  const isOn = !!st[ch];
+                  if (this._lastChState[ch] !== isOn) {
+                    console.log(`[Sync] Server CH${ch} changed to:`, isOn ? "ON" : "OFF");
+                    this.sendWebRelayCommand(`Relay4Set:${ch}:${isOn ? "ON" : "OFF"}`);
+                    this._lastChState[ch] = isOn;
+                  }
+                }
+              }
+            }
             const $ = (sel) => this.shadowRoot.querySelector(sel);
 
             if ($("#rateVal") && s.rate) $("#rateVal").textContent = s.rate;
@@ -1550,9 +1767,15 @@
             }
             if (s.relay && this.shadowRoot.getElementById("relayInfo")) {
               const rly = s.relay;
-              this.shadowRoot.getElementById("relayInfo").textContent = `port=${rly.port || "-"}, last=${rly.last_cmd ||
-                "-"}:${rly.last_result || "-"}`;
+              let infoText = "";
+              if (rly.port === "DISABLED") {
+                infoText = `<span style="color:#dc2626; font-weight:bold;">🔒 後端連線已停用 (瀏覽器接管中)</span>`;
+              } else {
+                infoText = `port=${rly.port || "-"}, last=${rly.last_cmd || "-"}:${rly.last_result || "-"}`;
+              }
+              this.shadowRoot.getElementById("relayInfo").innerHTML = `${infoText} <span style="font-size:11px; opacity:0.8;">(點此進入分區控制)</span>`;
             }
+            Assistant
 
           } catch (e) {
             console.error(e);
@@ -1887,6 +2110,12 @@
         async postForm(path, kv) {
           try {
             console.log("[UI] Request:", path, kv);
+
+            // 🆕 Mirror to local Web Serial if connected
+            if (kv && kv.cmd) {
+              this.sendWebRelayCommand(kv.cmd);
+            }
+
             const targetUrl = (typeof API_BASE !== 'undefined' && API_BASE ? API_BASE : '') + path;
 
             await fetch(targetUrl, {
