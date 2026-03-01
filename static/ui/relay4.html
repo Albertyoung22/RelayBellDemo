@@ -228,7 +228,8 @@
 <body>
   <header>
 
-    <div class="title">🔌 4-Relay 控制台 </div>
+    <div class="title">🔌 4-Relay 控制台 <span id="wsDot" title="WebSocket 連線中…"
+        style="font-size:14px;cursor:default;">🟡</span></div>
     <div class="links">
       <span id="nowText"
         style="margin-right:12px;opacity:.9;display:inline-block;min-width:140px;text-align:right">--:--:--</span>
@@ -455,7 +456,7 @@
       }
       fetchStatus();
     }
-    Assistant
+
 
     function clearPort() {
       currentPort = '';
@@ -499,6 +500,20 @@
         }
 
         updateChStatus(j.ch_state || {});
+
+        // 🆕 [NEW] Web Serial: 同步伺服器狀態到本地 USB 繼電器 (與 index.html 同步)
+        if (_serialWriter && j.ch_state) {
+          if (!this._lastLocalChSync) this._lastLocalChSync = {};
+          for (let ch = 1; ch <= 4; ch++) {
+            const serverOn = (j.ch_state[ch] === 1 || j.ch_state[String(ch)] === 1);
+            if (this._lastLocalChSync[ch] !== serverOn) {
+              console.log(`[Sync] Server CH${ch} changed to:`, serverOn);
+              sendSerialBytes(ch, serverOn);
+              this._lastLocalChSync[ch] = serverOn;
+            }
+          }
+        }
+
         const status = '最後指令：' + (j.last_cmd || '-') + ' · 結果：' + (j.last_result || '-') + (j.last_error ? (' · 錯誤：' + j.last_error) : '');
         document.getElementById('lastStatus').textContent = status;
       } catch (e) {
@@ -507,9 +522,12 @@
     }
 
     function updateChStatus(chState) {
+      if (!chState) return;
       for (let ch = 1; ch <= 4; ch++) {
         const el = document.getElementById('ch' + ch + 'Status');
-        const isOn = !!chState[ch];
+        if (!el) continue;
+        // 同時檢查數字 1 和字串 "1"
+        const isOn = (chState[ch] === 1 || chState[ch] === true || chState[String(ch)] === 1 || chState[String(ch)] === true);
         el.textContent = isOn ? 'ON' : 'OFF';
         el.classList.toggle('status-on', isOn);
         el.classList.toggle('status-off', !isOn);
@@ -517,11 +535,8 @@
     }
 
     async function setRelay(ch, on) {
-      // 🆕 Mirror to local serial if connected
-      if (_serialWriter) {
-        sendSerialBytes(ch, on);
-      }
-
+      // 🆕 Web Serial: 如果本地連線，同時控制本地硬體
+      if (_serialWriter) { sendSerialBytes(ch, on); }
       try {
         const payload = { ch, on };
         if (currentPort) payload.port = currentPort;
@@ -535,23 +550,59 @@
           log('CH' + ch + ' 設定失敗：' + (j.error || 'unknown'), true);
           return;
         }
+        // 更新狀態
         updateChStatus(j.ch_state || {});
-        const usedPort = j.port || '';
-        if (currentPort)
-          document.getElementById('portLabel').textContent = '手動指定：' + currentPort + '（實際：' + (usedPort || '未知') + '）';
-        else
-          document.getElementById('portLabel').textContent = usedPort || '(未連線)';
-
         log('CH' + ch + ' → ' + (on ? 'ON' : 'OFF') + ' 成功', false);
-        const status = '最後指令：' + (j.last_cmd || '-') + ' · 結果：' + (j.last_result || '-') + (j.last_error ? (' · 錯誤：' + j.last_error) : '');
-        document.getElementById('lastStatus').textContent = status;
       } catch (e) {
         log('CH' + ch + ' 設定例外：' + e, true);
       }
     }
 
     fetchStatus();
-    setInterval(fetchStatus, 5000);
+    setInterval(fetchStatus, 1500);  // 縮短輪詢時間 (1.5s) 以對齊 index.html 的靈敏度
+
+    // ✅ WebSocket 即時同步核心
+    let _ws4 = null;
+    let _ws4Retry = 1000;
+
+    function connectWS4() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      _ws4 = new WebSocket(proto + '//' + location.host + '/ws/web');
+
+      _ws4.onopen = () => {
+        _ws4Retry = 1000;
+        const dot = document.getElementById('wsDot');
+        if (dot) { dot.textContent = '🟢'; dot.title = 'WebSocket 已連線 (即時同步)'; }
+        log('WebSocket 已連線', false);
+      };
+
+      _ws4.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'relay4_state' && msg.ch_state) {
+            updateChStatus(msg.ch_state);
+            if (msg.last_cmd) {
+              document.getElementById('lastStatus').textContent = '即時同步：' + msg.last_cmd;
+            }
+            log('[即時] 狀態已同步', false);
+          }
+        } catch (e) { }
+      };
+
+      _ws4.onerror = () => {
+        const dot = document.getElementById('wsDot');
+        if (dot) { dot.textContent = '🔴'; }
+      };
+
+      _ws4.onclose = () => {
+        const dot = document.getElementById('wsDot');
+        if (dot) { dot.textContent = '🟡'; }
+        setTimeout(connectWS4, _ws4Retry);
+        _ws4Retry = Math.min(_ws4Retry * 1.5, 10000);
+      };
+    }
+    connectWS4();
+
   </script>
   <script>
     (function () {
