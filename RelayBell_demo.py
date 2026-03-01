@@ -3138,10 +3138,17 @@ RELAY4_INFO = {
 
 
 def _relay4_set(key, val):
-
     RELAY4_INFO[key] = val
-
     RELAY4_INFO["last_update_ts"] = time.time()
+    # ✅ 同步更新到全域 STATE 以便 /state API 返回
+    if "relay4" not in STATE: STATE["relay4"] = {}
+    STATE["relay4"] = {
+        "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+        "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
+        "last_cmd": RELAY4_INFO.get("last_cmd"),
+        "last_result": RELAY4_INFO.get("last_result"),
+        "ts": RELAY4_INFO.get("last_update_ts"),
+    }
 
 
 
@@ -3371,6 +3378,22 @@ def control_usb_relay4(ch: int, on: bool, retries: int = 5, port_override: str |
         st[int(ch)] = 1 if on else 0
         _relay4_set("ch_state", st)
         _relay4_set("status", "ON" if any(st.values()) else "OFF")
+        _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'} (WebMode)")
+        # ✅ 廣播同步：讓所有 relay4.html 頁面即時更新
+        try:
+            import json as _j
+            # 確保傳送給前端的是統一格式
+            _clean_state = {str(k): int(v) for k, v in st.items()}
+            _ws_val = _j.dumps({
+                "type": "relay4_state",
+                "ch_state": _clean_state,
+                "port": "DISABLED",
+                "last_cmd": f"CH{ch}:{'ON' if on else 'OFF'} (WebMode)",
+            })
+            print(f"[4R-WS] Broadcasting ch_state (WebMode): {_clean_state}")
+            _broadcast_web(_ws_val)
+        except Exception as e:
+            print(f"[4R-WS] Broadcast error: {e}")
         return False
 
     target_port = port_override or RELAY4_PORT or auto_detect_4relay_port()
@@ -10427,7 +10450,20 @@ def relay4_set():
 
             single_port = (RELAY_INFO.get("port") if "RELAY_INFO" in globals() else None) or RELAY_PORT
 
-
+            # ✅ [NEW] 即時 WebSocket 廣播：讓所有開啟 relay4.html 的客戶端即時同步
+            try:
+                import json as _json
+                _clean_state = {str(k): int(v) for k, v in ch_state.items()}
+                _ws_msg = _json.dumps({
+                    "type": "relay4_state",
+                    "ch_state": _clean_state,
+                    "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+                    "last_cmd": RELAY4_INFO.get("last_cmd"),
+                })
+                print(f"[4R-WS] Broadcasting ch_state: {_clean_state}")
+                _broadcast_web(_ws_msg)
+            except Exception as _bcast_err:
+                _diag(f"[4R] WS broadcast error: {_bcast_err}")
 
             return jsonify(
 
@@ -11268,7 +11304,12 @@ def state():
     out["relay_auto_on"] = RELAY_AUTO_ON
 
     out["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    # 將 Relay4 狀態也加入此通用狀態介面
+    out["relay4"] = STATE.get("relay4") or {
+        "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+        "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
+        "last_cmd": RELAY4_INFO.get("last_cmd")
+    }
     return jsonify(out)
 
 @app.post("/api/relay_config")
