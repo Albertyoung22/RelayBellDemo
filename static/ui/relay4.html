@@ -472,52 +472,76 @@
       fetchStatus();
     }
 
+    // 🆕 全域狀態追蹤
+    let g_lastLocalChSync = {};
+
+    function updateChStatus(chState) {
+      if (!chState) return;
+      for (let ch = 1; ch <= 4; ch++) {
+        const el = document.getElementById('ch' + ch + 'Status');
+        if (!el) continue;
+        // 同時檢查數字 1 和字串 "1" (JSON 鍵值永遠是字串)
+        const val = chState[ch] !== undefined ? chState[ch] : chState[String(ch)];
+        const isOn = (val === 1 || val === true || val === "1");
+        el.textContent = isOn ? 'ON' : 'OFF';
+        el.classList.toggle('status-on', isOn);
+        el.classList.toggle('status-off', !isOn);
+      }
+    }
+
+    // ✅ 統一狀態處理 (UI 更新 + 實體同步)
+    function processStateUpdate(data) {
+      if (!data || !data.ch_state) return;
+
+      // 1. 更新 UI 燈號
+      updateChStatus(data.ch_state);
+
+      // 2. 同步到實體 USB 繼電器 (Web Serial)
+      if (_serialWriter) {
+        for (let ch = 1; ch <= 4; ch++) {
+          const val = data.ch_state[ch] !== undefined ? data.ch_state[ch] : data.ch_state[String(ch)];
+          const serverOn = (val === 1 || val === true || val === "1");
+
+          if (g_lastLocalChSync[ch] !== serverOn) {
+            console.log(`[Sync] 實體同步 CH${ch} →`, serverOn);
+            sendSerialBytes(ch, serverOn);
+            g_lastLocalChSync[ch] = serverOn;
+            log(`[同步] 實體 CH${ch} 已設為 ${serverOn ? 'ON' : 'OFF'}`, false);
+          }
+        }
+      }
+
+      // 3. 更新日誌連結
+      if (data.last_cmd) {
+        document.getElementById('lastStatus').textContent = '最新狀態：' + data.last_cmd + (data.port ? ` (${data.port})` : '');
+      }
+    }
+
     async function fetchStatus() {
       try {
         let url = '/relay4/status';
         if (currentPort) url += '?port=' + encodeURIComponent(currentPort);
         const res = await fetch(url);
         const j = await res.json();
-        if (!j.ok) {
-          log('狀態取得失敗：' + (j.error || 'unknown'), true);
-          return;
-        }
-        const mainPort = j.main_port || j.single_port || j.relay_port || j.mainRelayPort || '';
-        document.getElementById('backendPortLabel').textContent = mainPort || '未知';
+        if (!j.ok) return;
 
-        const ports = j.usb_relay_ports || j.available_ports || j.relay4_ports || j.ports || [];
+        // 更新 COM 埠列表與顯示
+        const mainPort = j.main_port || j.single_port || j.relay_port || "";
+        document.getElementById('backendPortLabel').textContent = mainPort || '未知';
+        const ports = j.usb_relay_ports || j.available_ports || [];
         rebuildPortOptions(ports, mainPort);
 
         const usedPort = j.port || '';
         if (currentPort)
-          document.getElementById('portLabel').textContent = '手動指定：' + currentPort + '（實際：' + (usedPort || '未知') + '）';
+          document.getElementById('portLabel').textContent = '指定：' + currentPort + (usedPort ? ` (實:${usedPort})` : '');
         else
-          document.getElementById('portLabel').textContent = usedPort || '(未連線)';
+          document.getElementById('portLabel').textContent = usedPort || '(自動偵測中)';
 
-        const sel = document.getElementById('portSelect');
-        if (currentPort && sel.value !== currentPort) {
-          sel.value = currentPort;
-        }
+        // 執行統一更新
+        processStateUpdate(j);
 
-        updateChStatus(j.ch_state || {});
-
-        // 🆕 [NEW] Web Serial: 同步伺服器狀態到本地 USB 繼電器 (與 index.html 同步)
-        if (_serialWriter && j.ch_state) {
-          if (!this._lastLocalChSync) this._lastLocalChSync = {};
-          for (let ch = 1; ch <= 4; ch++) {
-            const serverOn = (j.ch_state[ch] === 1 || j.ch_state[String(ch)] === 1);
-            if (this._lastLocalChSync[ch] !== serverOn) {
-              console.log(`[Sync] Server CH${ch} changed to:`, serverOn);
-              sendSerialBytes(ch, serverOn);
-              this._lastLocalChSync[ch] = serverOn;
-            }
-          }
-        }
-
-        const status = '最後指令：' + (j.last_cmd || '-') + ' · 結果：' + (j.last_result || '-') + (j.last_error ? (' · 錯誤：' + j.last_error) : '');
-        document.getElementById('lastStatus').textContent = status;
       } catch (e) {
-        log('無法取得狀態：' + e, true);
+        // console.error(e);
       }
     }
 
@@ -579,34 +603,12 @@
       _ws4.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
-          // 支援兩類訊息：專屬的 relay4_state 或通用狀態廣播
-          let targetState = null;
           if (msg.type === 'relay4_state' && msg.ch_state) {
-            targetState = msg.ch_state;
-          } else if (msg.relay4 && msg.relay4.ch_state) {
-            targetState = msg.relay4.ch_state;
+            // ✅ 使用統一的狀態更新函式，確保 UI 和實體硬體同時對齊
+            processStateUpdate(msg);
+            log('[即時] 狀態已由遠端同步', false);
           }
-
-          if (targetState) {
-            updateChStatus(targetState);
-            if (msg.last_cmd) {
-              document.getElementById('lastStatus').textContent = '即時同步：' + msg.last_cmd;
-            }
-            // 🆕 如果本地有連線 Web Serial，也在此同步硬體
-            if (_serialWriter) {
-              for (let ch = 1; ch <= 4; ch++) {
-                const serverOn = (targetState[ch] === 1 || targetState[String(ch)] === 1);
-                if (this._lastLocalChSync && this._lastLocalChSync[ch] !== serverOn) {
-                  sendSerialBytes(ch, serverOn);
-                  this._lastLocalChSync[ch] = serverOn;
-                }
-              }
-            }
-            log('[即時] 狀態已由伺服器同步', false);
-          }
-        } catch (e) {
-          console.error("WS Parse Error", e);
-        }
+        } catch (e) { }
       };
 
       _ws4.onerror = () => {
