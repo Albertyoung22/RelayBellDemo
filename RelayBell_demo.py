@@ -3137,20 +3137,13 @@ RELAY4_INFO = {
 
 
 
-RELAY4_PORT = None
-
 def _relay4_set(key, val):
-    global RELAY4_PORT
     RELAY4_INFO[key] = val
     RELAY4_INFO["last_update_ts"] = time.time()
     # ✅ 同步更新到全域 STATE 以便 /state API 返回
     if "relay4" not in STATE: STATE["relay4"] = {}
-    
-    # 這裡使用 globals().get 是為了徹底防止初始化順序導致的 NameError
-    _current_p = RELAY4_INFO.get("port") or globals().get("RELAY4_PORT") or ""
-
     STATE["relay4"] = {
-        "port": _current_p,
+        "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
         "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
         "last_cmd": RELAY4_INFO.get("last_cmd"),
         "last_result": RELAY4_INFO.get("last_result"),
@@ -13485,29 +13478,7 @@ if not _HAS_TKINTER:
 # == [ANCHOR] GUI MODE (Windows 桌面環境) ==
 # ====================================================
 
-# ✅ [Cloud Fix] Safely initialize Tkinter for Render/Headless
-IS_HEADLESS = ("RENDER" in os.environ) or (sys.platform != "win32" and "DISPLAY" not in os.environ)
-root = None
-
-if not IS_HEADLESS:
-    try:
-        root = tk.Tk()
-    except Exception as e:
-        print(f">>> [GUI] tk.Tk() failed, falling back to HEADLESS: {e}")
-        IS_HEADLESS = True
-
-if IS_HEADLESS:
-    print(">>> [CLOUD] Headless mode activated. Skipping local GUI windows. <<<")
-    class DummyRoot:
-        def __getattr__(self, name): return lambda *a, **k: None
-        def mainloop(self):
-            while True: time.sleep(100)
-    root = DummyRoot()
-    def ui_safe(func, *args, **kwargs):
-        pass # Skip UI updates in cloud
-else:
-    # Existing ui_safe logic or similar if defined earlier...
-    pass
+root = tk.Tk()
 
 
 
@@ -16041,12 +16012,11 @@ def run_web_server():
     if DISABLE_WEB:
         text_area_insert(" DISABLE_WEB=True，未啟動 Flask。", "Web")
         return
-    # 🆕 Render/Cloud Port Binding
-    target_port = int(os.environ.get("PORT", HTTP_PORT))
-    
+    host = "0.0.0.0"; port = HTTP_PORT
+
     try:
-        text_area_insert(f" Flask 伺服器啟動 (支援 WebSocket)：http://{host}:{target_port}", "Web")
-        app.run(host=host, port=target_port, threaded=True, use_reloader=False)
+        text_area_insert(f" Flask 伺服器啟動 (支援 WebSocket)：http://{host}:{port}", "Web")
+        app.run(host=host, port=port, threaded=True, use_reloader=False)
     except Exception as e:
         text_area_insert(f"❌ Web 伺服器啟動失敗：{e}", "Web")
 
@@ -16122,13 +16092,7 @@ try:
     if 'student_udp_listener' in globals(): threading.Thread(target=student_udp_listener, daemon=True).start()
     if 'student_broadcast_discover' in globals(): threading.Thread(target=student_broadcast_discover, daemon=True).start()
 
-    # 🆕 [Cloud/Render Fix] Run Flask in MAIN thread if no GUI.
-    if IS_HEADLESS:
-        print(">>> [CLOUD] Start Web Server in MAIN Thread (No GUI) <<<")
-        run_web_server()
-    else:
-        print(">>> [GUI] Start Web Server in BACKGROUND Thread <<<")
-        threading.Thread(target=run_web_server, daemon=True).start()
+    threading.Thread(target=run_web_server, daemon=True).start()
     if 'start_ngrok' in globals(): root.after(2500, start_ngrok)
 
     # Cleanup
@@ -16246,13 +16210,8 @@ try:
     else:
         print("[Fire] Monitor disabled (No valid port configured)")
 
-    # ✅ [Cloud Fix] If headless, don't use mainloop. Just keep main thread alive or use it for Flask.
-    if not IS_HEADLESS:
-        root.mainloop()
-    else:
-        # In headless, the background thread runs Flask. Main thread just waits.
-        print(">>> [CLOUD] Server is running. Main thread idling. <<<")
-        while True: time.sleep(100)
+    # Mainloop
+    root.mainloop()
 except Exception as e:
     import traceback
     err_msg = "".join(traceback.format_exception(None, e, e.__traceback__))
