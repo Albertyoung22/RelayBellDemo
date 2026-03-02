@@ -3142,46 +3142,48 @@ def _relay4_set(key, val):
     RELAY4_INFO["last_update_ts"] = time.time()
     # ✅ 同步更新到全域 STATE 以便 /state API 返回
     if "relay4" not in STATE: STATE["relay4"] = {}
+    st_clean = {str(k): int(v) for k, v in (RELAY4_INFO.get("ch_state") or {1:0,2:0,3:0,4:0}).items()}
     STATE["relay4"] = {
         "port": RELAY4_INFO.get("port") or globals().get("RELAY4_PORT", ""),
-        "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
+        "ch_state": st_clean,
         "last_cmd": RELAY4_INFO.get("last_cmd"),
         "last_result": RELAY4_INFO.get("last_result"),
         "ts": RELAY4_INFO.get("last_update_ts"),
     }
+    # ✅ 廣播同步：確保所有開啟 relay4.html 的頁面即時更新
+    try:
+        import json as _j
+        _msg = _j.dumps({
+            "type": "relay4_state",
+            "ch_state": st_clean,
+            "port": STATE["relay4"]["port"],
+            "last_cmd": STATE["relay4"]["last_cmd"]
+        })
+        _broadcast_web(_msg)
+    except: pass
 
 
 
 def get_manual_relay4_port():
-
     """從 ~/.udp_receiver/relay4_port.txt 或環境變數 RELAY4_PORT 讀取 4-Relay COM。"""
-
     env = os.environ.get("RELAY4_PORT")
-
-    if env:
-
-        # _diag(f"[4R] Manual port from ENV -> {env}")
-
-        return env.strip()
-
+    if env: return env.strip()
+    
     cfg = DIAG_DIR / "relay4_port.txt"
-
     if cfg.exists():
-
         try:
-
             val = cfg.read_text(encoding="utf-8").strip()
-
-            if val:
-
-                # _diag(f"[4R] Manual port from relay4_port.txt -> {val}")
-
-                return val
-
-        except Exception as e:
-
-            _diag(f"[4R] Read relay4_port.txt error: {e}")
-
+            if val: return val
+        except: pass
+        
+    # 🆕 Fallback to relay_port.txt if it's DISABLED
+    cfg_main = DIAG_DIR / "relay_port.txt"
+    if cfg_main.exists():
+        try:
+            val = cfg_main.read_text(encoding="utf-8").strip()
+            if val == "DISABLED": return "DISABLED"
+        except: pass
+        
     return None
 
 
@@ -3366,44 +3368,26 @@ RELAY4_PORT = get_manual_relay4_port() or auto_detect_4relay_port()
 
 def control_usb_relay4(ch: int, on: bool, retries: int = 5, port_override: str | None = None):
     global RELAY4_PORT
-    if ch not in (1, 2, 3, 4):
-        raise ValueError("ch 必須是 1~4")
+    if ch not in (1, 2, 3, 4): raise ValueError("ch 必須是 1~4")
 
-    if RELAY4_PORT in ("DISABLED", "NONE"):
-        msg = f"[4R] Backend control is DISABLED. Skipping CH{ch} - Port released for Browser."
-        print(msg)
-        text_area_insert(msg, "RELY")
-        # Update status/state anyway so Web UI can sync
+    # [Sync] 只要指令送達，第一時間更新狀態與廣播 (Virtual Sync)
+    # 這樣即便伺服器沒接實體，Web Serial 切換後，其他電腦也能即時看到變色
+    with RELAY4_LOCK:
         st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
         st[int(ch)] = 1 if on else 0
         _relay4_set("ch_state", st)
         _relay4_set("status", "ON" if any(st.values()) else "OFF")
-        _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'} (WebMode)")
-        # ✅ 廣播同步：讓所有 relay4.html 頁面即時更新
-        try:
-            import json as _j
-            # 確保傳送給前端的是統一格式
-            _clean_state = {str(k): int(v) for k, v in st.items()}
-            _ws_val = _j.dumps({
-                "type": "relay4_state",
-                "ch_state": _clean_state,
-                "port": "DISABLED",
-                "last_cmd": f"CH{ch}:{'ON' if on else 'OFF'} (WebMode)",
-            })
-            print(f"[4R-WS] Broadcasting ch_state (WebMode): {_clean_state}")
-            _broadcast_web(_ws_val)
-        except Exception as e:
-            print(f"[4R-WS] Broadcast error: {e}")
-        return False
+        _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'}")
+
+    # 若處於 DISABLED 模式，直接返回 (Web Direct Mode)
+    if RELAY4_PORT in ("DISABLED", "NONE") and not port_override:
+        print(f"[4R-WebMode] CH{ch} -> {'ON' if on else 'OFF'}")
+        return True
 
     target_port = port_override or RELAY4_PORT or auto_detect_4relay_port()
-    
-    # Update state
-    _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'}")
-    
     if not target_port:
         _relay4_set("last_result", "FAIL")
-        _relay4_set("last_error", "No COM port")
+        _relay4_set("last_error", "No COM port available")
         return False
 
     # Protocol: A0 [CH] [STATUS] [SUM]
@@ -3415,18 +3399,12 @@ def control_usb_relay4(ch: int, on: bool, retries: int = 5, port_override: str |
         with RELAY4_LOCK:
             with serial.Serial(target_port, 9600, timeout=1.0) as ser:
                 ser.write(cmd)
-                st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
-                st[int(ch)] = 1 if on else 0
-                _relay4_set("ch_state", st)
-                _relay4_set("last_result", "OK")
-                _relay4_set("last_error", "")
-                ui_safe(refresh_relay4_ui)
-                print(f"[4R] Port {target_port} CH{ch} set to {'ON' if on else 'OFF'} (SUCCESS)")
                 return True
     except Exception as e:
+        msg = f"[4R] Hardware Write Error: {e}"
+        print(msg)
         _relay4_set("last_result", "FAIL")
-        _relay4_set("last_error", str(e))
-        print(f"[4R] Port {target_port} control error: {e}")
+        _relay4_set("last_error", str(e)[:180])
         return False
 
 
