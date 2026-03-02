@@ -3143,7 +3143,7 @@ def _relay4_set(key, val):
     # ✅ 同步更新到全域 STATE 以便 /state API 返回
     if "relay4" not in STATE: STATE["relay4"] = {}
     STATE["relay4"] = {
-        "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+        "port": RELAY4_INFO.get("port") or globals().get("RELAY4_PORT", ""),
         "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
         "last_cmd": RELAY4_INFO.get("last_cmd"),
         "last_result": RELAY4_INFO.get("last_result"),
