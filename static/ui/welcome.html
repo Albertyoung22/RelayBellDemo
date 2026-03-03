@@ -27,6 +27,7 @@
             color: white;
             font-family: 'Outfit', 'Noto Sans TC', sans-serif;
             overflow: hidden;
+            -webkit-text-size-adjust: 100%;
         }
 
         /* Cinema Background */
@@ -65,7 +66,20 @@
                 radial-gradient(circle at 20% 30%, rgba(30, 123, 216, 0.1) 0%, transparent 50%),
                 radial-gradient(circle at 80% 70%, rgba(138, 43, 226, 0.1) 0%, transparent 50%);
             opacity: 0.5;
+            -webkit-animation: meshFloat 20s infinite alternate;
             animation: meshFloat 20s infinite alternate;
+        }
+
+        @-webkit-keyframes meshFloat {
+            0% {
+                -webkit-transform: scale(1) translate(0, 0);
+                transform: scale(1) translate(0, 0);
+            }
+
+            100% {
+                -webkit-transform: scale(1.2) translate(2%, 2%);
+                transform: scale(1.2) translate(2%, 2%);
+            }
         }
 
         @keyframes meshFloat {
@@ -88,11 +102,32 @@
             align-items: center;
             text-align: center;
             z-index: 5;
+            opacity: 0;
         }
 
         .active-slide {
             display: flex;
-            animation: slideIn 1.2s cubic-bezier(0.23, 1, 0.32, 1);
+            opacity: 1;
+            -webkit-animation: slideIn 1.2s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+            animation: slideIn 1.2s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+        }
+
+        @-webkit-keyframes slideIn {
+            from {
+                -webkit-transform: scale(0.9) translateY(30px);
+                transform: scale(0.9) translateY(30px);
+                opacity: 0;
+                -webkit-filter: blur(10px);
+                filter: blur(10px);
+            }
+
+            to {
+                -webkit-transform: scale(1) translateY(0);
+                transform: scale(1) translateY(0);
+                opacity: 1;
+                -webkit-filter: blur(0);
+                filter: blur(0);
+            }
         }
 
         @keyframes slideIn {
@@ -113,8 +148,24 @@
             font-size: 120px;
             color: var(--primary);
             margin-bottom: 30px;
+            -webkit-filter: drop-shadow(0 0 30px rgba(30, 123, 216, 0.6));
             filter: drop-shadow(0 0 30px rgba(30, 123, 216, 0.6));
+            -webkit-animation: floatIcon 3s ease-in-out infinite;
             animation: floatIcon 3s ease-in-out infinite;
+        }
+
+        @-webkit-keyframes floatIcon {
+
+            0%,
+            100% {
+                -webkit-transform: translateY(0) rotate(0);
+                transform: translateY(0) rotate(0);
+            }
+
+            50% {
+                -webkit-transform: translateY(-15px) rotate(5deg);
+                transform: translateY(-15px) rotate(5deg);
+            }
         }
 
         @keyframes floatIcon {
@@ -161,12 +212,16 @@
         .media-box img {
             width: 100%;
             display: block;
+            -webkit-filter: brightness(0.8);
             filter: brightness(0.8);
+            -webkit-transition: 0.5s;
             transition: 0.5s;
         }
 
         .active-slide .media-box img {
+            -webkit-filter: brightness(1.1);
             filter: brightness(1.1);
+            -webkit-transform: scale(1.05);
             transform: scale(1.05);
         }
 
@@ -183,6 +238,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            -webkit-transition: 0.8s;
             transition: 0.8s;
         }
 
@@ -196,10 +252,12 @@
             border-radius: 999px;
             cursor: pointer;
             box-shadow: 0 10px 30px rgba(30, 123, 216, 0.4);
+            -webkit-transition: 0.3s;
             transition: 0.3s;
         }
 
         .btn-play:hover {
+            -webkit-transform: scale(1.1);
             transform: scale(1.1);
             box-shadow: 0 15px 40px rgba(30, 123, 216, 0.6);
         }
@@ -211,6 +269,7 @@
             height: 4px;
             background: var(--primary);
             width: 0%;
+            -webkit-transition: width linear;
             transition: width linear;
             z-index: 20;
         }
@@ -246,7 +305,20 @@
             height: 8px;
             background: var(--primary);
             border-radius: 50%;
+            -webkit-animation: blink 1s infinite;
             animation: blink 1s infinite;
+        }
+
+        @-webkit-keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
         }
 
         @keyframes blink {
@@ -260,6 +332,26 @@
                 opacity: 0.3;
             }
         }
+
+        /* Responsive Fix for iPhone */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 32px;
+            }
+
+            p {
+                font-size: 18px;
+            }
+
+            .icon-box {
+                font-size: 80px;
+            }
+
+            .btn-play {
+                padding: 15px 40px;
+                font-size: 20px;
+            }
+        }
     </style>
 </head>
 
@@ -268,9 +360,11 @@
         <div class="bg-mesh"></div>
 
         <div class="overlay-start" id="startOverlay">
-            <h1 style="margin-bottom: 40px;">🎬 RelayBell 系統導覽</h1>
+            <h1
+                style="margin-bottom: 20px; text-align: center; -webkit-text-fill-color: initial; background: none; color: white;">
+                🎬 RelayBell 系統導覽</h1>
             <button class="btn-play" id="btnPlay">開始播放介紹</button>
-            <p style="margin-top: 20px; font-size: 16px;">播放時會開啟神祕電子配樂與智慧語音導覽</p>
+            <p style="margin-top: 20px; font-size: 16px; text-align: center;">播放時會開啟神祕電子配樂與智慧語音導覽</p>
         </div>
 
         <button class="skip-btn" id="btnSkip" style="display:none;">結束介紹</button>
@@ -397,33 +491,36 @@
         ];
 
         let currentIdx = 0;
+        // iOS 關鍵：預先建立音軌物件，並在使用者手勢點擊時「解鎖」
         let bgm = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3');
         bgm.loop = true;
         bgm.volume = 0.15;
+
+        let narrator = new Audio();
 
         document.getElementById('btnPlay').addEventListener('click', startPresentation);
         document.getElementById('btnSkip').addEventListener('click', () => window.location.href = 'index.html');
 
         async function startPresentation() {
-            // Initialize BGM on user gesture
+            // iOS 解鎖音軌
             try {
-                await bgm.play();
-                console.log("BGM started");
+                bgm.play().catch(e => console.warn("BGM play failed:", e));
+                // 解鎖敘述音軌（播放靜音或直接呼叫 play/pause）
+                narrator.play().catch(() => { });
+                narrator.pause();
+                console.log("Audio contexts unlocked for Safari iOS");
             } catch (e) {
-                console.warn("BGM autoplay blocked or failed:", e);
-                // Try one more time specifically on click
-                bgm.play();
+                console.warn("Manual audio unlock failed:", e);
             }
 
             document.getElementById('startOverlay').style.opacity = '0';
             setTimeout(() => {
                 document.getElementById('startOverlay').style.display = 'none';
+
+                document.getElementById('btnSkip').style.display = 'block';
+                document.getElementById('statusBox').style.display = 'flex';
+                runSequence();
             }, 800);
-
-            document.getElementById('btnSkip').style.display = 'block';
-            document.getElementById('statusBox').style.display = 'flex';
-
-            runSequence();
         }
 
         async function runSequence() {
@@ -433,22 +530,37 @@
         }
 
         async function showSlide(slideData) {
-            // UI Switch
-            document.querySelectorAll('.slide').forEach(s => s.classList.remove('active-slide'));
+            // UI Switch: Safari 有時需要先移除 display: none 再加動畫 class 才能正確觸發
+            const allSlides = document.querySelectorAll('.slide');
+            allSlides.forEach(s => {
+                s.style.display = 'none';
+                s.classList.remove('active-slide');
+            });
+
             const currentSlideEl = document.getElementById(slideData.id);
-            if (currentSlideEl) currentSlideEl.classList.add('active-slide');
+            if (currentSlideEl) {
+                currentSlideEl.style.display = 'flex';
+                // 強制瀏覽器重繪 (For Safari)
+                void currentSlideEl.offsetWidth;
+                currentSlideEl.classList.add('active-slide');
+            }
 
             // Reset progress bar
             const bar = document.getElementById('progressBar');
             bar.style.transition = 'none';
             bar.style.width = '0%';
+            void bar.offsetWidth;
 
             // Start speaking and wait for it to finish
-            const audioPromise = speak(slideData.text);
-
-            // We'll approximate the progress bar to the audio duration if possible, 
-            // but since we don't know it until it loads, we'll just wait for the promise.
-            await audioPromise;
+            try {
+                // 給予一個超時上限，避免 TTS 失敗導致整個簡報卡住
+                const audioPromise = speak(slideData.text);
+                const timeoutPromise = new Promise(r => setTimeout(r, 15000)); // 15秒超時
+                await Promise.race([audioPromise, timeoutPromise]);
+            } catch (e) {
+                console.error("Slide progression error:", e);
+                await new Promise(r => setTimeout(r, 2000));
+            }
 
             // Brief pause between slides
             await new Promise(r => setTimeout(r, 1000));
@@ -456,6 +568,14 @@
 
         function speak(text) {
             return new Promise(async (resolve) => {
+                let resolved = false;
+                const safeResolve = () => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve();
+                    }
+                };
+
                 try {
                     const response = await fetch('/api/tts_preview', {
                         method: 'POST',
@@ -471,31 +591,56 @@
                     if (!response.ok) throw new Error("API fail");
                     const blob = await response.blob();
                     const url = URL.createObjectURL(blob);
-                    const audio = new Audio(url);
+
+                    // 重複使用已「授權」播放的音軌物件
+                    narrator.src = url;
 
                     // Track audio duration for progress bar
-                    audio.onloadedmetadata = () => {
+                    narrator.onloadedmetadata = () => {
                         const bar = document.getElementById('progressBar');
-                        bar.style.transition = `width ${audio.duration}s linear`;
+                        bar.style.transition = `width ${narrator.duration}s linear`;
                         bar.style.width = '100%';
                     };
 
-                    audio.onended = () => {
+                    narrator.onended = () => {
                         URL.revokeObjectURL(url);
-                        resolve();
+                        safeResolve();
                     };
-                    audio.play();
+
+                    narrator.onerror = () => {
+                        console.error("Narrator audio error");
+                        safeResolve();
+                    };
+
+                    const playPromise = narrator.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(error => {
+                            console.error("Narrator play blocked:", error);
+                            // 退回 SpeechSynthesis
+                            fallbackSpeak(text, safeResolve);
+                        });
+                    }
                 } catch (e) {
                     console.error("TTS Error:", e);
-                    // Fallback to browser TTS if API fails
-                    const msg = new SpeechSynthesisUtterance(text);
-                    msg.lang = 'zh-TW';
-                    msg.onend = () => resolve();
-                    window.speechSynthesis.speak(msg);
+                    fallbackSpeak(text, safeResolve);
                 }
             });
         }
+
+        function fallbackSpeak(text, resolve) {
+            try {
+                const msg = new SpeechSynthesisUtterance(text);
+                msg.lang = 'zh-TW';
+                msg.onend = () => resolve();
+                msg.onerror = () => resolve();
+                window.speechSynthesis.speak(msg);
+            } catch (e) {
+                console.error("SpeechSynthesis failed:", e);
+                setTimeout(resolve, 3000); // 失敗也繼續
+            }
+        }
     </script>
 </body>
+
 
 </html>
