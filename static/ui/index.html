@@ -567,7 +567,8 @@
                   <span class="badge">語速：${this.escape(s.rate || "-")}</span>
                   <span class="badge">語言：${this.escape(activeLang)}</span>
                   <span class="badge">聲別：${this.escape(activeGender)}</span>
-                  <span class="badge" style="background:${this.getTtsColor(s.edge_tts_status)};">TTS：${this.escape(s.edge_tts_status || "Checking...")}</span>
+                  <span class="badge" style="background:${this.getTtsColor(s.edge_tts_status)};">Edge：${this.escape(s.edge_tts_status || "Checking...")}</span>
+                  <span class="badge" style="background:${this.getTtsColor(s.melo_tts_status)};">Melo：${this.escape(s.melo_tts_status || "Off")}</span>
                   ${s.muted ? '<span class="badge" style="background:#ffecec;border-color:#ffcece;color:#8b1a1a">靜音</span>' : ""}
                 </div>
                 <div class="right tight">
@@ -773,6 +774,10 @@
                     <div class="row">
                       <label class="small">播放前自動解除靜音</label>
                       <input id="autoUnmute" type="checkbox" />
+                    </div>
+                    <div class="row">
+                       <label class="small">使用 AI 高音質 (MeloTTS)</label>
+                       <input id="useMelo" type="checkbox" />
                     </div>
                     <div class="row">
                       <label class="small">播放前導/結束音</label>
@@ -1251,6 +1256,10 @@
           _safeBind("#rate", "change", (e) => this.postForm("/setrate", { rate: Number(e.target.value) + "%" }));
 
           _safeBind("#autoUnmute", "change", (e) => this.postForm("/autounmute", {
+            on: e.target.checked ? "1" : "0"
+          }));
+
+          _safeBind("#useMelo", "change", (e) => this.postForm("/setmelo", {
             on: e.target.checked ? "1" : "0"
           }));
 
@@ -1747,6 +1756,7 @@
               $("#volVal").textContent = `${s.volume}%`;
             }
             if ($("#autoUnmute")) $("#autoUnmute").checked = !!s.auto_unmute_on_play;
+            if ($("#useMelo")) $("#useMelo").checked = !!s.use_melo_tts;
 
             // 🆕 Sync Local Language Settings from Server (only if we haven't touched it recently)
             // But strict sync might be annoying. Let's just update if it's "Checking..." or on load.
