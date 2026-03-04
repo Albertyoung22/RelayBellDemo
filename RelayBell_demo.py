@@ -47,7 +47,7 @@ UDP 語音接收端（含桌面 UI｜保留全部原功能｜前端頁面獨立�
 
 USE_NGROK = False           # 想關掉 ngrok 就改 False
 
-USE_MELO_TTS = False        # [NEW] 是否使用 MeloTTS (第1順位)
+USE_MELO_TTS = True         # [NEW] 是否使用 MeloTTS (第1順位)
 USE_EDGE_TTS = True         # 是否使用 Edge TTS (若 False 則直接跳過，使用 Piper/gTTS)
 
 USE_AI_GENERATION = True    # 是否啟用 AI 廣播稿生成 (若 False 則不需安裝 Ollama)
@@ -881,6 +881,52 @@ RECORD_DIR = os.path.join(APP_DIR, "Recoding")
 os.makedirs(RECORD_DIR, exist_ok=True)
 
 
+VOLUME_LEVEL = 80
+
+speech_queue = queue.Queue(maxsize=100)
+youtube_queue = queue.Queue(maxsize=30)
+mp3_queue = queue.Queue(maxsize=30)
+
+def enqueue_drop_old(q: queue.Queue, item):
+    if q.full():
+        with q.mutex:
+            q.queue.clear()
+    q.put(item)
+
+STATE = {
+    "muted": False,
+    "lang": "zh-TW",
+    "gender": "female",
+    "rate": "-20%",
+    "volume": VOLUME_LEVEL,
+    "playing": "idle",
+    "progress": 0,
+    "ngrok_url": None,
+    "mp3_progress": 0,
+    "mpv_ipc_path": None,
+    "auto_unmute_on_play": True,
+    "timetable": {"enabled": True, "loaded": False, "count": 0, "path": ""},
+    "azure_speech_key": "",
+    "azure_speech_region": "",
+    "edge_tts_status": "Checking...",
+    "melo_tts_status": "Off",
+    "use_melo_tts": False,
+    "version": "2.1.2-GUID",
+}
+
+try:
+    with open(os.path.join(APP_DIR, "azure_config.json"), "r", encoding="utf-8") as f:
+        _ac = json.load(f)
+        STATE["azure_speech_key"] = _ac.get("azure_speech_key", "")
+        STATE["azure_speech_region"] = _ac.get("azure_speech_region", "")
+except Exception:
+    pass
+
+AUTO_UNMUTE_ON_PLAY = True
+_updating_volume_ui = False
+
+
+
 # ===============================
 # == [ANCHOR] MeloTTS Setup ==
 # ===============================
@@ -898,6 +944,14 @@ try:
         print(f"[DEBUG-INIT] Entering MeloTTS setup block...")
         try:
              import torch
+             import nltk
+             # Ensure NLTK resources are available
+             for res in ['punkt', 'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']:
+                 try:
+                     nltk.data.find(f'tokenizers/{res}') if res == 'punkt' else nltk.data.find(f'taggers/{res}')
+                 except LookupError:
+                     print(f"[SETUP] Downloading NLTK resource: {res}...")
+                     nltk.download(res)
              # Try importing MeloTTS
              # Installation: pip install melotts
              try:
@@ -917,6 +971,7 @@ try:
              melo_model = TTS(language='ZH', device=device)
              
              HAS_MELO = True
+             STATE["melo_tts_status"] = "Ready" 
              _log_boot("✅ MeloTTS 載入完成！")
              
              try:
@@ -935,6 +990,7 @@ try:
              full_trace = traceback.format_exc()
              print(f"[DEBUG-INIT] MeloTTS init failed:\n{full_trace}")
              _log_boot(f"[WARN] MeloTTS Init Failed: {e}")
+             STATE["melo_tts_status"] = f"Error: {e}"
 
 except Exception as e:
     HAS_MELO = False
@@ -2576,70 +2632,8 @@ stop_playback_event = threading.Event()
 
 
 
-VOLUME_LEVEL = 80
+# STATE and dependencies moved higher up
 
-
-
-speech_queue = queue.Queue(maxsize=100)
-
-youtube_queue = queue.Queue(maxsize=30)
-
-mp3_queue = queue.Queue(maxsize=30)
-
-
-
-def enqueue_drop_old(q: queue.Queue, item):
-
-    if q.full():
-
-        with q.mutex:
-
-            q.queue.clear()
-
-    q.put(item)
-
-
-
-
-
-STATE = {
-    "muted": False,
-    "lang": "zh-TW",
-    "gender": "female",
-    "rate": "-20%",
-    "volume": VOLUME_LEVEL,
-    "playing": "idle",
-    "progress": 0,
-    "ngrok_url": None,
-    "mp3_progress": 0,
-    "mpv_ipc_path": None,
-    "auto_unmute_on_play": True,
-    "timetable": {"enabled": True, "loaded": False, "count": 0, "path": ""},
-    "azure_speech_key": "",
-    "azure_speech_region": "",
-    "edge_tts_status": "Checking...",
-    "version": "2.1.2-GUID",
-}
-
-try:
-
-    with open(os.path.join(APP_DIR, "azure_config.json"), "r", encoding="utf-8") as f:
-
-        _ac = json.load(f)
-
-        STATE["azure_speech_key"] = _ac.get("azure_speech_key", "")
-
-        STATE["azure_speech_region"] = _ac.get("azure_speech_region", "")
-
-except Exception:
-
-    pass
-
-
-
-AUTO_UNMUTE_ON_PLAY = True
-
-_updating_volume_ui = False
 
 
 
@@ -4777,12 +4771,14 @@ async def speak_text_async(text, force_chime_off=False):
         # 限制 Melo 僅處理中文 (zh-TW, zh-CN, zh)
         is_zh = (lang and (lang.startswith("zh") or "zh" in lang))
         
-        will_use_melo = (USE_MELO_TTS and HAS_MELO and melo_model and is_zh)
+        # Check both global flag and state toggle
+        pref_melo = STATE.get("use_melo_tts", True)
+        will_use_melo = (USE_MELO_TTS and pref_melo and HAS_MELO and melo_model and is_zh)
 
         if stop_playback_event.is_set() or voice_muted:
             return
 
-        if USE_MELO_TTS:
+        if USE_MELO_TTS and pref_melo:
             if not (HAS_MELO and melo_model):
                  text_area_insert(f"⚠️ 跳過 MeloTTS (Init={HAS_MELO}, Err={MELO_ERR})", "TTS")
             elif not is_zh:
@@ -10777,32 +10773,37 @@ def setrate():
 
 @app.route("/setlang", methods=["POST"])
 def setlang():
-    lang = request.form.get("lang","zh-TW"); threading.Thread(target=handle_msg, args=(f"SetLang:{lang}", (_client_ip_from_request(), "Web")), daemon=True).start()
+    data = _get_json_tolerant() or {}
+    lang = data.get("lang") or request.form.get("lang", "zh-TW")
+    threading.Thread(target=handle_msg, args=(f"SetLang:{lang}", (_client_ip_from_request(), "Web")), daemon=True).start()
     return ("", 204)
 
 @app.route("/setgender", methods=["POST"])
 def setgender():
-    g = request.form.get("gender","female"); threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
+    data = _get_json_tolerant() or {}
+    g = data.get("gender") or request.form.get("gender", "female")
+    threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
+    return ("", 204)
+
+@app.route("/setmelo", methods=["POST"])
+def setmelo():
+    data = _get_json_tolerant() or {}
+    on_raw = data.get("on") if "on" in data else request.form.get("on", "1")
+    on = str(on_raw) == "1"
+    STATE["use_melo_tts"] = on
     return ("", 204)
 
 
 
 @app.route("/setvol", methods=["POST"])
-
 def setvol():
-
-    vol = request.form.get("vol","")
-
+    data = _get_json_tolerant() or {}
+    vol = data.get("vol") or request.form.get("vol", "")
     if vol != "":
-
         try: v = int(vol)
-
         except: v = None
-
         if v is not None:
-
             threading.Thread(target=handle_msg, args=(f"SetVolume:{v}", (_client_ip_from_request(), "Web")), daemon=True).start()
-
     return ("", 204)
 
 
