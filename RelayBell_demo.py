@@ -908,6 +908,7 @@ STATE = {
     "azure_speech_key": "",
     "azure_speech_region": "",
     "edge_tts_status": "Checking...",
+    "render_url": os.environ.get("RENDER_EXTERNAL_URL", "https://relaybelldemo.onrender.com"),
     "version": "2.1.2-GUID",
 }
 
@@ -3335,7 +3336,7 @@ RELAY_ACTIVE_LOCK = threading.RLock()
 
 # [NEW] Relay Config Persistence
 RELAY_CONFIG_PATH = Path(DATA_DIR) / "relay_config.json"
-RELAY_AUTO_ON = True
+RELAY_AUTO_ON = False
 RELAY_OFF_DELAY = 0.5  # 最終保險延遲 (play_sound 內部已有 1.5 秒 browser 緩衝)
 
 def _save_relay_config():
@@ -3351,7 +3352,7 @@ def _load_relay_config():
     try:
         if RELAY_CONFIG_PATH.exists():
             data = json.loads(RELAY_CONFIG_PATH.read_text(encoding="utf-8"))
-            RELAY_AUTO_ON = data.get("auto_on", True)
+            RELAY_AUTO_ON = data.get("auto_on", False)
             print(f"[Config] Loaded relay config: auto_on={RELAY_AUTO_ON}")
     except Exception as e:
         print(f"[Config] Load relay config failed: {e}")
@@ -10610,6 +10611,13 @@ def setgender():
     threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
     return ("", 204)
 
+@app.route("/set_render_url", methods=["POST"])
+def set_render_url():
+    data = _get_json_tolerant() or {}
+    url = data.get("url", "").strip()
+    STATE["render_url"] = url
+    return jsonify(ok=True, url=url)
+
 
 
 
@@ -15818,6 +15826,30 @@ def run_web_server():
         text_area_insert(f"❌ Web 伺服器啟動失敗：{e}", "Web")
 
 # Startup Sequence
+def keep_render_alive():
+    """Background thread to ping self on Render to prevent spin-down."""
+    import requests
+    time.sleep(30) # Wait for server to boot
+    while True:
+        url = STATE.get("render_url")
+        if url:
+            try:
+                # Ensure it's a full URL
+                if not url.startswith("http"):
+                    test_url = f"https://{url}"
+                else:
+                    test_url = url
+                
+                print(f"[KeepAlive] Pinging {test_url}...")
+                requests.get(test_url, timeout=10)
+            except Exception as e:
+                print(f"[KeepAlive] Ping failed: {e}")
+        
+        # Ping every 10 minutes (Render timeout is 15m)
+        time.sleep(600)
+
+threading.Thread(target=keep_render_alive, daemon=True).start()
+
 try:
     if '_load_timetable_from_disk' in globals(): _load_timetable_from_disk()
     def _init_lists_once():
