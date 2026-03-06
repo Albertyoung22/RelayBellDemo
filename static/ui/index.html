@@ -595,10 +595,6 @@
                         <div id="transPreviewText" style="font-size: 15px; line-height: 1.5; color: #1e293b; background: white; padding: 10px; border-radius: 6px; border: 1px solid #bfdbfe;"></div>
                     </div>
 
-                    <div class="row tight" style="margin-top:0px; margin-bottom:8px;">
-                      <span class="hint">💡 <b>注音控制：</b> 在文字中插入 <code>[:ㄏㄠ3]</code> 可精準控制字音。</span>
-                      <span class="hint" style="margin-left:8px;">🎨 <b>指令控制 (Instruct)：</b> 使用 <code>[用開心的語氣]內容</code> 可控制風格。</span>
-                    </div>
                     <div class="btns">
                       <button id="btn-say" class="primary">🔊 直接播報</button>
                       <!-- AI Button (Direct) -->
@@ -825,6 +821,15 @@
                     <div class="row tight"><span class="hint">課表：</span> <span id="ttInfo" class="mono">—</span></div>
                     <div class="row tight"><span class="hint">Relay：</span> <a href="relay4.html" id="relayInfo" class="mono" style="color:#1e7bd8; text-decoration:underline; font-weight:bold;">— (點此進入分區控制)</a></div>
                   </div>
+
+                    <div class="card" style="margin-top:12px; border: 1px solid #d1d5db;">
+                      <h3>☁️ 雲端防休眠 (Keep-Alive)</h3>
+                      <div class="row">
+                        <input type="text" id="renderUrl" placeholder="輸入 Render 外部連結..." style="flex:1; font-size:12px;" />
+                        <button id="btn-save-render-url" class="secondary" style="padding:4px 10px;">💾</button>
+                      </div>
+                      <div class="row tight"><span class="hint">說明：Render 免費版 15 分鐘未用會休眠。輸入連結後系統會每 10 分鐘自動「呼喚」自己。</span></div>
+                    </div>
 
                     <div class="card" style="margin-top:12px; border: 2px solid #1e7bd8; background: #f0f7ff;">
                       <h3>🔗 瀏覽器直接控制 USB Relay (Web Serial)</h3>
@@ -1123,6 +1128,13 @@
           });
 
           // 🆕 Manual Relay Control
+          _safeBind("#btn-save-render-url", "click", () => {
+            const url = $("#renderUrl").value;
+            this.postJSON("/set_render_url", { url: url }).then(r => {
+              if (r && r.ok) alert("已儲存 Render 連結，防休眠機制啟動。");
+            });
+          });
+
           _safeBind("#btn-relay-on", "click", () => this.postForm("/cmd", { cmd: "RelayOn" }));
           _safeBind("#btn-relay-off", "click", () => this.postForm("/cmd", { cmd: "RelayOff" }));
 
@@ -1747,6 +1759,7 @@
               $("#volVal").textContent = `${s.volume}%`;
             }
             if ($("#autoUnmute")) $("#autoUnmute").checked = !!s.auto_unmute_on_play;
+            if ($("#renderUrl") && s.render_url) $("#renderUrl").value = s.render_url;
 
             // 🆕 Sync Local Language Settings from Server (only if we haven't touched it recently)
             // But strict sync might be annoying. Let's just update if it's "Checking..." or on load.
