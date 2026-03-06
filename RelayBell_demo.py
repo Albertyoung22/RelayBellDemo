@@ -47,7 +47,6 @@ UDP 語音接收端（含桌面 UI｜保留全部原功能｜前端頁面獨立�
 
 USE_NGROK = False           # 想關掉 ngrok 就改 False
 
-USE_MELO_TTS = True         # [NEW] 是否使用 MeloTTS (第1順位)
 USE_EDGE_TTS = True         # 是否使用 Edge TTS (若 False 則直接跳過，使用 Piper/gTTS)
 
 USE_AI_GENERATION = True    # 是否啟用 AI 廣播稿生成 (若 False 則不需安裝 Ollama)
@@ -909,8 +908,6 @@ STATE = {
     "azure_speech_key": "",
     "azure_speech_region": "",
     "edge_tts_status": "Checking...",
-    "melo_tts_status": "Off",
-    "use_melo_tts": False,
     "version": "2.1.2-GUID",
 }
 
@@ -924,78 +921,6 @@ except Exception:
 
 AUTO_UNMUTE_ON_PLAY = True
 _updating_volume_ui = False
-
-
-
-# ===============================
-# == [ANCHOR] MeloTTS Setup ==
-# ===============================
-
-MELO_SPEAKER = "ZH" # [NEW] 全域 Melo 語者 ID (預設中文)
-HAS_MELO = False
-MELO_ERR = ""
-melo_model = None
-
-try:
-    _melo_state = globals().get("USE_MELO_TTS", False)
-    print(f"[DEBUG-INIT] Starting Setup Check. USE_MELO_TTS is: {_melo_state}")
-    
-    if _melo_state:
-        print(f"[DEBUG-INIT] Entering MeloTTS setup block...")
-        try:
-             import torch
-             import nltk
-             # Ensure NLTK resources are available
-             for res in ['punkt', 'averaged_perceptron_tagger', 'averaged_perceptron_tagger_eng']:
-                 try:
-                     nltk.data.find(f'tokenizers/{res}') if res == 'punkt' else nltk.data.find(f'taggers/{res}')
-                 except LookupError:
-                     print(f"[SETUP] Downloading NLTK resource: {res}...")
-                     nltk.download(res)
-             # Try importing MeloTTS
-             # Installation: pip install melotts
-             try:
-                from melo.api import TTS
-             except ImportError:
-                # Try fallback or re-raise
-                print("[SETUP] melo.api not found. Please run: pip install melotts")
-                raise
-
-             # Check device
-             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-             print(f"[SETUP] Initializing MeloTTS (ZH) on {device}...")
-             
-             # Initialize Model (Auto-download if needed)
-             # Note: This might take time on first run
-             _log_boot(f"[SETUP] Loading MeloTTS model (Device={device})...")
-             melo_model = TTS(language='ZH', device=device)
-             
-             HAS_MELO = True
-             STATE["melo_tts_status"] = "Ready" 
-             _log_boot("✅ MeloTTS 載入完成！")
-             
-             try:
-                 spks = melo_model.hps.data.spk2id
-                 print(f"[SETUP] Available Melo Speakers: {spks}")
-             except: pass
-             
-        except ImportError as e:
-             HAS_MELO = False
-             MELO_ERR = f"Import Error: {e} (Please pip install melotts)"
-             _log_boot(f"[WARN] MeloTTS Import Failed: {e}")
-        except Exception as e:
-             HAS_MELO = False
-             MELO_ERR = str(e)
-             import traceback
-             full_trace = traceback.format_exc()
-             print(f"[DEBUG-INIT] MeloTTS init failed:\n{full_trace}")
-             _log_boot(f"[WARN] MeloTTS Init Failed: {e}")
-             STATE["melo_tts_status"] = f"Error: {e}"
-
-except Exception as e:
-    HAS_MELO = False
-    MELO_ERR = str(e)
-    print(f"[DEBUG-INIT] General Exception caught: {e}")
 
 
 
@@ -4767,106 +4692,6 @@ async def speak_text_async(text, force_chime_off=False):
 
 
 
-        # [NEW] 0. MeloTTS (Priority 1)
-        # 限制 Melo 僅處理中文 (zh-TW, zh-CN, zh)
-        is_zh = (lang and (lang.startswith("zh") or "zh" in lang))
-        
-        # Check both global flag and state toggle
-        pref_melo = STATE.get("use_melo_tts", True)
-        will_use_melo = (USE_MELO_TTS and pref_melo and HAS_MELO and melo_model and is_zh)
-
-        if stop_playback_event.is_set() or voice_muted:
-            return
-
-        if USE_MELO_TTS and pref_melo:
-            if not (HAS_MELO and melo_model):
-                 text_area_insert(f"⚠️ 跳過 MeloTTS (Init={HAS_MELO}, Err={MELO_ERR})", "TTS")
-            elif not is_zh:
-                 text_area_insert(f"ℹ️ MeloTTS 僅限中文，目前語系 {lang} 將跳過並使用備援引擎", "TTS")
-        
-        if will_use_melo:
-            try:
-                # 判定角色 
-                melo_speaker_id = 0 # default
-                try:
-                    # Check gender preferences to map to Melo speakers if available?
-                    # Currently Melo ZH usually has one speaker with id 0, or accents
-                    # Let's see if we can find gender specific? 
-                    # If not, just use default.
-                    
-                    spks = melo_model.hps.data.spk2id
-                    # E.g. {'ZH': 0}
-                    if 'ZH' in spks:
-                        melo_speaker_id = spks['ZH']
-                    elif spks:
-                        melo_speaker_id = list(spks.values())[0]
-                except:
-                    pass
-
-                STATE["playing"] = "melo_generating"
-                ui_safe(set_playing_status, f"✨ AI 合成中 (MeloTTS)...")
-                text_area_insert(f"🌬️ MeloTTS 生成中...", "TTS")
-                
-                # Speed Control
-                speed_factor = 1.0
-                try:
-                    val_str = active_rate.replace("%", "").strip()
-                    val = float(val_str)
-                    speed_factor = 1.0 + (val / 100.0)
-                    speed_factor = max(0.5, min(2.0, speed_factor))
-                except: pass
-
-                # Save to wav
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as fp:
-                    wav_path = fp.name
-                
-                # Inference (MeloTTS)
-                # tts_to_file(text, speaker_id, output_path, speed=1.0)
-                melo_model.tts_to_file(text, melo_speaker_id, wav_path, speed=speed_factor)
-                
-                if os.path.exists(wav_path) and os.path.getsize(wav_path) > 0:
-                     # Precision: Activate Relay only when audio is ready
-                     if not relay_acquired:
-                         first = relay_acquire("speak_text_async_melo")
-                         relay_acquired = True
-                         if first: await asyncio.sleep(2.5) # Warmup amp
-
-                     ui_safe(set_playing_status, f"🔊 MeloTTS 播放中...")
-                     try:
-                        # Log chime status
-                        print(f"[DEBUG] MeloTTS Chime check: CHIME_ENABLED={CHIME_ENABLED}, should_chime={should_chime}, FILE={START_SOUND}")
-                        if should_chime and START_SOUND and os.path.isfile(START_SOUND):
-                            print(f"[Chime] Playing start (Melo): {START_SOUND}")
-                            # Use wait=False for better UX + short delay
-                            play_sound(START_SOUND, ignore_interrupt=True, wait=False)
-                            await asyncio.sleep(1.0) # Just wait a bit for the chime to "kick in"
-                        else:
-                            print(f"[Chime] Skipping start. should_chime={should_chime}, file_ex={os.path.isfile(START_SOUND) if START_SOUND else 'None'}")
-                     except Exception as ce:
-                        print(f"[Chime] Play error: {ce}")
-                     
-                     play_sound(wav_path)
-                     # [Safety] 延遲刪除
-                     def delayed_cleanup(p):
-                        try:
-                            time.sleep(10)
-                            if os.path.exists(p): os.remove(p)
-                        except: pass
-                     threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
-                     
-                     if not (stop_playback_event.is_set() or voice_muted):
-                        ui_safe(set_playing_status, f"✅ 朗讀完成（MeloTTS）")
-                        try:
-                            if should_chime and os.path.exists(END_SOUND):
-                                play_sound(END_SOUND, ignore_interrupt=True)
-                        except: pass
-                     return
-                else:
-                     text_area_insert("⚠️ MeloTTS 產出空檔案", "TTS")
-
-            except Exception as e:
-                 text_area_insert(f"❌ MeloTTS 失敗: {e}", "TTS")
-                 # Fallthrough to next engine
 
 
         if PIPER_FORCE and _piper_available():
@@ -10785,13 +10610,6 @@ def setgender():
     threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
     return ("", 204)
 
-@app.route("/setmelo", methods=["POST"])
-def setmelo():
-    data = _get_json_tolerant() or {}
-    on_raw = data.get("on") if "on" in data else request.form.get("on", "1")
-    on = str(on_raw) == "1"
-    STATE["use_melo_tts"] = on
-    return ("", 204)
 
 
 
