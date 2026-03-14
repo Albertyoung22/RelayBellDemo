@@ -4,894 +4,664 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OmniSignal | 全域智慧廣播系統介紹</title>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@300;400;600;800&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
+    <title>OmniSignal | 全域智慧廣播系統</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
     <style>
         :root {
-            --primary: #1e7bd8;
-            --accent: #8a2be2;
-            --bg-dark: #0f172a;
+            --primary: #2563eb;
+            --primary-light: #60a5fa;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #8b5cf6;
         }
 
-        body,
-        html {
+        * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg-dark);
-            color: white;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
             font-family: 'Outfit', 'Noto Sans TC', sans-serif;
-            overflow: hidden;
-            -webkit-text-size-adjust: 100%;
+            line-height: 1.6;
+            overflow-x: hidden;
         }
 
-        /* Particles Background */
-        #particleCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            pointer-events: none;
-            opacity: 0.6;
-        }
-
-        /* Cinema Background */
-        .stage {
+        /* Hero Background */
+        .hero {
             position: relative;
-            width: 100%;
-            height: 100%;
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
-            overflow: hidden;
-            perspective: 2000px;
+            padding: 80px 20px;
+            background: radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.15), transparent 40%),
+                        radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.1), transparent 40%);
         }
 
-        /* Scanline effect */
-        .stage::after {
-            content: " ";
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            right: 0;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            background-size: 100% 2px, 3px 100%;
-            pointer-events: none;
-            z-index: 10;
-        }
-
-        .bg-mesh {
+        .hero-image {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background:
-                radial-gradient(circle at 20% 30%, rgba(30, 123, 216, 0.15) 0%, transparent 50%),
-                radial-gradient(circle at 80% 70%, rgba(138, 43, 226, 0.15) 0%, transparent 50%);
+            object-fit: cover;
             opacity: 0.5;
-            -webkit-animation: meshFloat 20s infinite alternate;
-            animation: meshFloat 20s infinite alternate;
-            z-index: 0;
+            z-index: -1;
+            filter: brightness(0.6);
         }
 
-        @-webkit-keyframes meshFloat {
-            0% {
-                -webkit-transform: scale(1) translate(0, 0);
-                transform: scale(1) translate(0, 0);
-            }
-
-            100% {
-                -webkit-transform: scale(1.2) translate(3%, 3%);
-                transform: scale(1.2) translate(3%, 3%);
-            }
+        .container {
+            max-width: 1100px;
+            width: 100%;
+            margin: 0 auto;
+            z-index: 10;
         }
 
-        @keyframes meshFloat {
-            0% {
-                transform: scale(1) translate(0, 0);
-            }
-
-            100% {
-                transform: scale(1.2) translate(3%, 3%);
-            }
-        }
-
-        /* Slide Container */
-        .slide {
-            position: absolute;
-            width: 80%;
-            max-width: 1000px;
-            /* Safari Fix: 使用 visibility 而非 display: none 可確保圖片預載 */
-            visibility: hidden;
-            opacity: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+        header {
             text-align: center;
-            z-index: 5;
-            -webkit-backface-visibility: hidden;
-            backface-visibility: hidden;
-            pointer-events: none;
-            transform-style: preserve-3d;
-        }
-
-        .active-slide {
-            visibility: visible;
-            opacity: 1;
-            pointer-events: auto;
-            -webkit-animation: slideIn 1.4s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-            animation: slideIn 1.4s cubic-bezier(0.19, 1, 0.22, 1) forwards;
-        }
-
-        @-webkit-keyframes slideIn {
-            from {
-                -webkit-transform: scale(0.8) translateY(60px) rotateX(-20deg) translateZ(-200px);
-                transform: scale(0.8) translateY(60px) rotateX(-20deg) translateZ(-200px);
-                opacity: 0;
-                -webkit-filter: blur(20px);
-                filter: blur(20px);
-            }
-
-            to {
-                -webkit-transform: scale(1) translateY(0) rotateX(0) translateZ(0);
-                transform: scale(1) translateY(0) rotateX(0) translateZ(0);
-                opacity: 1;
-                -webkit-filter: blur(0);
-                filter: blur(0);
-            }
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: scale(0.8) translateY(60px) rotateX(-20deg) translateZ(-200px);
-                opacity: 0;
-                filter: blur(20px);
-            }
-
-            to {
-                transform: scale(1) translateY(0) rotateX(0) translateZ(0);
-                opacity: 1;
-                filter: blur(0);
-            }
-        }
-
-        .icon-box {
-            font-size: 140px;
-            color: var(--primary);
-            margin-bottom: 25px;
-            -webkit-filter: drop-shadow(0 0 40px rgba(30, 123, 216, 0.8));
-            filter: drop-shadow(0 0 40px rgba(30, 123, 216, 0.8));
-            -webkit-animation: floatIcon 4s ease-in-out infinite;
-            animation: floatIcon 4s ease-in-out infinite;
-            -webkit-transform: translateZ(50px);
-            transform: translateZ(50px);
-        }
-
-        @-webkit-keyframes floatIcon {
-
-            0%,
-            100% {
-                -webkit-transform: translateY(0) rotate(0) translateZ(50px);
-                transform: translateY(0) rotate(0) translateZ(50px);
-            }
-
-            50% {
-                -webkit-transform: translateY(-20px) rotate(8deg) translateZ(80px);
-                transform: translateY(-20px) rotate(8deg) translateZ(80px);
-            }
-        }
-
-        @keyframes floatIcon {
-
-            0%,
-            100% {
-                transform: translateY(0) rotate(0) translateZ(50px);
-            }
-
-            50% {
-                transform: translateY(-20px) rotate(8deg) translateZ(80px);
-            }
+            margin-bottom: 60px;
         }
 
         h1 {
-            font-size: 64px;
-            font-weight: 900;
-            margin-bottom: 15px;
-            line-height: 1.1;
+            font-size: clamp(2.5rem, 8vw, 4.5rem);
+            font-weight: 800;
+            letter-spacing: -2px;
+            margin-bottom: 20px;
             background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
-            text-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            line-height: 1.1;
         }
 
-        p {
-            font-size: 26px;
-            color: #cbd5e1;
-            line-height: 1.5;
-            max-width: 850px;
-            letter-spacing: 1px;
+        .tagline {
+            font-size: clamp(1.1rem, 3vw, 1.5rem);
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto;
+            font-weight: 300;
         }
 
-        /* Enhanced Media Box */
-        .media-box {
-            margin-top: 45px;
-            width: 100%;
-            max-width: 650px;
-            border-radius: 24px;
-            overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.7), 0 0 20px rgba(30, 123, 216, 0.2);
-            -webkit-transform: translateZ(30px);
-            transform: translateZ(30px);
-            background: rgba(30, 41, 59, 0.5);
-            -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
-            min-height: 320px;
+        .cta-group {
             display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 16px 40px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid transparent;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-light);
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-outline {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            border-color: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary);
+            transform: translateY(-3px);
+        }
+
+        .btn-vid {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 10px 20px rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-vid:hover {
+            background: #f1f5f9;
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(255, 255, 255, 0.2);
+        }
+
+        /* Modal Styles - Bright & Professional */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: none;
             align-items: center;
             justify-content: center;
-            transition: 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+            padding: 20px;
         }
 
-        .media-box:hover {
-            border-color: var(--primary);
-            box-shadow: 0 40px 90px rgba(0, 0, 0, 0.8), 0 0 40px rgba(30, 123, 216, 0.4);
-        }
-
-        .media-box img {
+        .modal-content {
+            background: white;
             width: 100%;
-            height: auto;
-            display: block;
-            -webkit-filter: brightness(0.7) contrast(1.1);
-            filter: brightness(0.7) contrast(1.1);
-            -webkit-transition: -webkit-transform 1s ease, -webkit-filter 1s ease;
-            transition: transform 1s ease, filter 1s ease;
-            -webkit-transform: translateZ(0);
-            transform: translateZ(0);
-            will-change: transform, filter;
+            max-width: 1100px;
+            height: 85vh;
+            border-radius: 32px;
+            overflow: hidden;
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.5);
+            position: relative;
+            transform: scale(0.9);
+            transition: 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            display: flex;
+            flex-direction: column;
         }
 
-        /* HUD Overlay Elements */
-        .hud-layer {
+        .modal-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .modal-sidebar {
+            width: 280px;
+            background: #f1f5f9;
+            border-right: 1px solid #e2e8f0;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .video-tab {
+            padding: 16px 20px;
+            border-radius: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: 0.3s;
+            color: #475569;
+            font-weight: 500;
+        }
+
+        .video-tab:hover {
+            background: white;
+            color: var(--primary);
+        }
+
+        .video-tab.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .video-tab iconify-icon {
+            font-size: 24px;
+        }
+
+        .modal-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 60%;
+            background: #000;
+        }
+
+        .video-container video {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
-            z-index: 15;
-            padding: 30px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            opacity: 0;
-            transition: 1.5s cubic-bezier(0.19, 1, 0.22, 1);
-            -webkit-transform: translateZ(100px);
-            transform: translateZ(100px);
+            object-fit: cover;
+            border-bottom: 4px solid var(--primary);
         }
 
-        .hud-top {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-
-        .hud-card {
-            background: rgba(15, 23, 42, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 15px 25px;
-            border-radius: 15px;
-            color: #94a3b8;
-            font-family: 'Outfit', monospace;
-            font-size: 14px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-            border-left: 4px solid var(--primary);
-        }
-
-        .hud-card h4 {
-            color: #fff;
-            margin: 0 0 5px 0;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-        }
-
-        .hud-value {
-            color: var(--primary);
-            font-weight: bold;
-            font-size: 18px;
-        }
-
-        .active-slide .media-box img {
-            -webkit-filter: brightness(1.1) contrast(1);
-            filter: brightness(1.1) contrast(1);
-            -webkit-animation: humanBreathe 8s ease-in-out infinite alternate;
-            animation: humanBreathe 8s ease-in-out infinite alternate;
-            -webkit-transform: scale(1.05) translateZ(0);
-            transform: scale(1.05) translateZ(0);
-        }
-
-        /* AI Human Specific Animation */
-        @-webkit-keyframes humanBreathe {
-            0% {
-                -webkit-filter: brightness(1) contrast(1);
-                filter: brightness(1) contrast(1);
-            }
-
-            100% {
-                -webkit-filter: brightness(1.2) contrast(1.1);
-                filter: brightness(1.2) contrast(1.1);
-                -webkit-transform: scale(1.1) translateZ(10px);
-                transform: scale(1.1) translateZ(10px);
-            }
-        }
-
-        @keyframes humanBreathe {
-            0% {
-                filter: brightness(1) contrast(1);
-            }
-
-            100% {
-                filter: brightness(1.2) contrast(1.1);
-                transform: scale(1.1) translateZ(10px);
-            }
-        }
-
-        /* Digital Human Scanning Line */
-        .media-box::after {
-            content: "";
+        .play-overlay {
             position: absolute;
-            top: -100%;
-            left: 0;
-            width: 100%;
-            height: 20%;
-            background: linear-gradient(to bottom, transparent, rgba(30, 123, 216, 0.4), transparent);
-            -webkit-animation: scanMove 4s linear infinite;
-            animation: scanMove 4s linear infinite;
-            pointer-events: none;
-            z-index: 2;
-        }
-
-        @-webkit-keyframes scanMove {
-            0% {
-                top: -20%;
-            }
-
-            100% {
-                top: 120%;
-            }
-        }
-
-        @keyframes scanMove {
-            0% {
-                top: -20%;
-            }
-
-            100% {
-                top: 120%;
-            }
-        }
-
-        /* Play Button - Premium */
-        .btn-play {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: white;
-            padding: 22px 70px;
-            font-size: 28px;
-            font-weight: 800;
-            border-radius: 999px;
-            cursor: pointer;
-            box-shadow: 0 15px 35px rgba(30, 123, 216, 0.5);
-            -webkit-transition: 0.4s;
-            transition: 0.4s;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            -webkit-transform: translateZ(0);
-            transform: translateZ(0);
-        }
-
-        .btn-play:hover {
-            -webkit-transform: scale(1.1) translateY(-5px) translateZ(20px);
-            transform: scale(1.1) translateY(-5px) translateZ(20px);
-            box-shadow: 0 25px 50px rgba(30, 123, 216, 0.7);
-            border-color: #fff;
-        }
-
-        .progress-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            height: 6px;
-            background: linear-gradient(90deg, var(--primary), var(--accent));
-            width: 0%;
-            -webkit-transition: width linear;
-            transition: width linear;
-            z-index: 20;
-            box-shadow: 0 -2px 15px var(--primary);
-        }
-
-        .skip-btn {
-            position: absolute;
-            top: 40px;
-            right: 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #94a3b8;
-            padding: 12px 24px;
-            border-radius: 12px;
-            cursor: pointer;
-            font-size: 15px;
-            z-index: 20;
-            -webkit-backdrop-filter: blur(15px);
-            backdrop-filter: blur(15px);
+            font-size: 40px;
+            box-shadow: 0 0 30px rgba(37, 99, 235, 0.5);
             transition: 0.3s;
         }
 
-        .skip-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
-            color: #fff;
-            border-color: rgba(255, 255, 255, 0.5);
+        .play-overlay:hover {
+            transform: translate(-50%, -50%) scale(1.1);
+            background: var(--primary-light);
         }
 
-        /* Bottom Status */
-        .status-box {
-            position: absolute;
-            bottom: 50px;
-            background: rgba(15, 23, 42, 0.6);
-            padding: 10px 25px;
-            border-radius: 999px;
+        .modal-footer {
+            padding: 30px 40px;
+            background: white;
+            color: #475569;
+        }
+
+        .modal-footer h4 {
+            color: #1e293b;
+            margin-bottom: 10px;
+        }
+
+        .modal-footer p {
+            font-size: 0.95rem;
+            margin: 0;
+        }
+
+        /* Features Grid */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-top: 80px;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
             border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 40px;
+            border-radius: 24px;
+            backdrop-filter: blur(12px);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
             display: flex;
-            align-items: center;
+            flex-direction: column;
             gap: 15px;
-            color: #94a3b8;
-            font-size: 16px;
-            z-index: 20;
-            -webkit-backdrop-filter: blur(10px);
-            backdrop-filter: blur(10px);
         }
 
-        .status-box .dot {
-            width: 10px;
-            height: 10px;
-            background: #22c55e;
-            border-radius: 50%;
-            -webkit-animation: blink 1s infinite;
-            animation: blink 1s infinite;
-            box-shadow: 0 0 10px #22c55e;
+        .feature-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-10px);
+            background: rgba(30, 41, 59, 0.9);
         }
 
-        /* Responsive Fix for iPhone */
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 32px;
-            }
+        .feature-card iconify-icon {
+            font-size: 48px;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
 
-            p {
-                font-size: 18px;
-                margin: 0 15px 15px;
-            }
+        .feature-card h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
 
-            .icon-box {
-                font-size: 80px;
-                margin-bottom: 15px;
-            }
+        .feature-card p {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
 
-            .btn-play {
-                padding: 18px 40px;
-                font-size: 20px;
-            }
+        .feature-card .badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 4px 12px;
+            background: rgba(37, 99, 235, 0.2);
+            color: var(--primary-light);
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 999px;
+            text-transform: uppercase;
+        }
 
-            .media-box {
-                margin-top: 25px;
-                width: 92%;
-                min-height: 200px;
-            }
+        /* Stats Section */
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 80px;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 24px;
+            flex-wrap: wrap;
+            gap: 40px;
+        }
 
-            .status-box {
-                bottom: 80px;
-                font-size: 14px;
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--primary-light);
+            display: block;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Animations */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            animation: reveal 1s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+        }
+
+        @keyframes reveal {
+            to {
+                opacity: 1;
+                transform: translateY(0);
             }
+        }
+
+        .stagger-1 { animation-delay: 0.1s; }
+        .stagger-2 { animation-delay: 0.2s; }
+        .stagger-3 { animation-delay: 0.3s; }
+        .stagger-4 { animation-delay: 0.4s; }
+
+        @media (max-width: 640px) {
+            .hero { padding: 40px 15px; }
+            .cta-group { flex-direction: column; width: 100%; }
+            .btn { width: 100%; justify-content: center; }
         }
     </style>
 </head>
 
 <body>
-    <div class="stage">
-        <canvas id="particleCanvas"></canvas>
-        <div class="bg-mesh"></div>
-
-        <!-- HUD UI Layer -->
-        <div class="hud-layer" id="hudLayer">
-            <div class="hud-top">
-                <div class="hud-card">
-                    <h4>SYSTEM STATUS</h4>
-                    <div class="hud-value">ONLINE / LIVE</div>
-                    <div style="font-size: 10px; margin-top: 5px;">Relay Node: <span
-                            style="color: #22c55e;">CONNECTED</span></div>
+    <section class="hero">
+        <img src="omnisignal_hero_luxury_1773506196806.png" class="hero-image" alt="Background">
+        
+        <div class="container">
+            <header class="reveal stagger-1">
+                <h1>OmniSignal</h1>
+                <p class="tagline">智慧場域的數位通訊核心。連結 AI 真人主播、物聯網監測與雲端自動化，重新定義專業廣播體驗。</p>
+                
+                <div class="cta-group">
+                    <a href="index.html" class="btn btn-primary">
+                        <iconify-icon icon="solar:globus-bold-duotone"></iconify-icon>
+                        立即進入主控台
+                    </a>
+                    <button class="btn btn-vid" onclick="openIntroModal()">
+                        <iconify-icon icon="solar:play-bold-duotone"></iconify-icon>
+                        聽取影音介紹
+                    </button>
+                    <a href="guide.html" class="btn btn-outline">
+                        <iconify-icon icon="solar:book-bold-duotone"></iconify-icon>
+                        說明指南
+                    </a>
                 </div>
-                <div class="hud-card" style="text-align: right;">
-                    <h4>REAL-TIME</h4>
-                    <div class="hud-value" id="hudClock">00:00:00</div>
-                    <div style="font-size: 10px; margin-top: 5px;">AI ENGINE: <span id="hudCpu"
-                            color="var(--primary)">24%</span></div>
+            </header>
+
+            <div class="features">
+                <div class="feature-card reveal stagger-2">
+                    <div class="badge">Innovation</div>
+                    <iconify-icon icon="solar:user-bold-duotone"></iconify-icon>
+                    <h3>AI 真人虛擬主播</h3>
+                    <p>內建頂級數位人技術，提供真人質感的多語種語音播報，結合即時翻譯服務，讓溝通無國界。</p>
+                </div>
+
+                <div class="feature-card reveal stagger-3">
+                    <div class="badge">Intelligence</div>
+                    <iconify-icon icon="solar:calendar-date-bold-duotone"></iconify-icon>
+                    <h3>規律任務自動化</h3>
+                    <p>深度整合場域工作流，精準排程各項廣播任務，支援複雜週期與臨時預約，實現無人值守運作。</p>
+                </div>
+
+                <div class="feature-card reveal stagger-4">
+                    <div class="badge">Safety</div>
+                    <iconify-icon icon="solar:danger-bold-duotone"></iconify-icon>
+                    <h3>國家級安全聯動</h3>
+                    <p>即時串接中央氣象署 EEW 地震預警，強震前夕自動啟動緊急廣播與看板，守護場域每一份安全。</p>
                 </div>
             </div>
-            <div class="hud-bottom" style="display: flex; gap: 15px;">
-                <div class="hud-card" style="flex: 1;">
-                    <h4>Activity Log</h4>
-                    <div style="font-size: 12px;" id="hudLog">Initializing Scenario...</div>
+
+            <div class="stats reveal stagger-4">
+                <div class="stat-item">
+                    <span class="stat-value">24/7</span>
+                    <span class="stat-label">穩定運行</span>
                 </div>
-                <div class="hud-card" style="width: 140px; text-align: center;">
-                    <h4>Scenario</h4>
-                    <div class="hud-value" style="font-size: 14px;" id="hudScenario">GENERAL</div>
+                <div class="stat-item">
+                    <span class="stat-value">50+</span>
+                    <span class="stat-label">內建功能</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">99%</span>
+                    <span class="stat-label">傳達率</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">∞</span>
+                    <span class="stat-label">場域無限</span>
                 </div>
             </div>
+
+            <footer>
+                <p>© 2024 OmniSignal Professional Smart Broadcast System. All Rights Reserved.</p>
+            </footer>
         </div>
+    </section>
 
-        <div class="overlay-start" id="startOverlay">
-            <h1
-                style="margin-bottom: 25px; text-align: center; -webkit-text-fill-color: initial; background: none; color: white;">
-                🎬 OmniSignal 多場景智慧播報</h1>
-            <button class="btn-play" id="btnPlay">開啟沉浸式場景導覽</button>
-            <p style="margin-top: 25px; font-size: 16px; text-align: center; color: #64748b;">我們將帶您穿梭於工廠、辦公室、商場等各種場域情境
-            </p>
+    <!-- Video Intro Gallery Modal -->
+    <div class="modal-overlay" id="introModal" onclick="closeIntroModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>🎬 OmniSignal 解決方案影音藝廊</h2>
+                <button class="close-btn" onclick="closeIntroModal()"><iconify-icon icon="solar:close-circle-bold"></iconify-icon></button>
+            </div>
+            
+            <div class="modal-body">
+                <nav class="modal-sidebar">
+                    <div class="video-tab active" onclick="switchVideo(0)">
+                        <iconify-icon icon="solar:globus-bold-duotone"></iconify-icon>
+                        全域智慧系統
+                    </div>
+                    <div class="video-tab" onclick="switchVideo(1)">
+                        <iconify-icon icon="solar:buildings-bold-duotone"></iconify-icon>
+                        企業辦公解決方案
+                    </div>
+                    <div class="video-tab" onclick="switchVideo(2)">
+                        <iconify-icon icon="solar:armchair-bold-duotone"></iconify-icon>
+                        智慧工廠整合
+                    </div>
+                    <div class="video-tab" onclick="switchVideo(3)">
+                        <iconify-icon icon="solar:hospital-bold-duotone"></iconify-icon>
+                        醫院與長照中心
+                    </div>
+                </nav>
+
+                <main class="modal-main">
+                    <div class="video-container">
+                        <video id="introVideo" playsinline muted loop poster="omnisignal_video_thumbnail_1773506611678.png">
+                            <source src="https://assets.mixkit.co/videos/preview/mixkit-top-view-of-a-young-woman-working-on-a-laptop-40073-large.mp4" type="video/mp4">
+                        </video>
+                        <div class="play-overlay" id="videoPlayOverlay" onclick="toggleIntroContent()">
+                            <iconify-icon icon="solar:play-bold"></iconify-icon>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <h4 id="videoTitle">全域智慧廣播系統</h4>
+                        <p id="videoDesc">本系統整合了頂尖的 AI 數位人技術、工業級物聯網控制與雲端自動化排程。不論是在工廠、辦公室或大型商場，OmniSignal 都能為您提供最穩定、最智慧的通訊解決方案。</p>
+                    </div>
+                </main>
+            </div>
         </div>
-
-        <button class="skip-btn" id="btnSkip" style="display:none;">跳過導覽</button>
-
-        <!-- Slide 1: Welcome/General -->
-        <div class="slide" id="slide1">
-            <div class="icon-box"><iconify-icon icon="solar:star-fall-bold-duotone"></iconify-icon></div>
-            <h1>歡迎來到 OmniSignal</h1>
-            <p>這是一場廣播系統的數位轉型。我們將帶您體驗結合了 AI 真人技術、物聯網與雲端控制的現代化全情境播報方案。</p>
-            <div class="media-box"><img src="/static/ui/relaybell_hero_concept_1772293809252.png" loading="eager"
-                    decoding="async"></div>
-        </div>
-
-        <!-- Slide 2: AI Human (Digital Announcer) -->
-        <div class="slide" id="slide2">
-            <div class="icon-box"><iconify-icon icon="solar:user-bold-duotone"></iconify-icon></div>
-            <h1>AI 真人虛擬主播</h1>
-            <p>內建頂級數位人技術。由 AI 主播進行真人質感的語音播音，不論表情或語調都栩栩如生，並能瞬間完成多語種翻譯服務。</p>
-            <div class="media-box"><img src="/static/ui/ai_avatar.png" loading="eager" decoding="async"></div>
-        </div>
-
-        <!-- Slide 3: Campus/Automation -->
-            <h1>智慧場域：高效與排程</h1>
-            <p style="font-size: 20px;">成功導入於多家知名企業與專業教育機構。<br>面對日益增加的<b>跨國協作</b>，OmniSignal
-                的多語翻譯廣播成為最具價值的溝通利器；在各行各業中更是推動<b>多元通訊</b>的最佳實踐工具。<br>系統更能深度整合工作排程，將訊號與通知播放全自動化。</p>
-            <div class="media-box" style="padding: 0;"><img src="/static/ui/school_bilingual_animated.svg"
-                    loading="eager" decoding="async" style="width: 100%; height: auto; border-radius: 24px;"></div>
-        </div>
-
-        <!-- Slide 4: Shopping Mall -->
-        <div class="slide" id="slide4">
-            <div class="icon-box"><iconify-icon icon="solar:bag-bold-duotone"></iconify-icon></div>
-            <h1>精品百貨：氛圍營造</h1>
-            <p>在精品百貨，OmniSignal 提供優雅的背景音樂與促銷廣播。結合 AI 主播溫柔親切的聲線，為顧客打造高品質購物空間。</p>
-            <div class="media-box"><img src="/static/ui/mall_scene.png" loading="eager" decoding="async"></div>
-        </div>
-
-        <!-- Slide 5: Marketplace -->
-        <div class="slide" id="slide5">
-            <div class="icon-box"><iconify-icon icon="solar:shop-2-bold-duotone"></iconify-icon></div>
-            <h1>批發市場：高效指令</h1>
-            <p>在嘈雜的果菜市場，具備音量自動補償與清晰語音強化技術，確保每一條批發指令都能在喧囂中被精準接收。</p>
-            <div class="media-box"><img src="/static/ui/market_scene.png" loading="eager" decoding="async"></div>
-        </div>
-
-        <!-- Slide 6: Mobile Mic -->
-        <div class="slide" id="slide6">
-            <div class="icon-box"><iconify-icon icon="solar:microphone-bold-duotone"></iconify-icon></div>
-            <h1>行動麥克風：隨處直播</h1>
-            <p>手機即是無線麥克風。現場巡迴、主管稽核或攤商導覽，只需點開 OmniSignal App 即可進行跨區、跨樓層的實時直播。</p>
-            <div class="media-box"><img src="/static/ui/mobile_mic.png" loading="eager" decoding="async"></div>
-        </div>
-
-        <!-- Slide 7: Control Center -->
-        <div class="slide" id="slide7">
-            <div class="icon-box"><iconify-icon icon="solar:settings-bold-duotone"></iconify-icon></div>
-            <h1>主控中心：物聯網連動</h1>
-            <p>廣播時自動開啟實體擴大機電源。我們採用工業級 USB Relay 控制器，實現軟硬體完美對接，大幅提升穩定度與效率。</p>
-            <div class="media-box"><img src="/static/ui/control_room.png" loading="eager" decoding="async"></div>
-        </div>
-
-        <!-- Slide 8: EEW / Safety -->
-        <div class="slide" id="slide8">
-            <div class="icon-box"><iconify-icon icon="solar:danger-bold-duotone"></iconify-icon></div>
-            <h1>國家級安全：地震連動</h1>
-            <p>與中央氣象署 EEW 預警即時對接。強震前夕自動觸發廣播與視覺指引看板，讓生命安全隨時受到科技的守護。</p>
-            <div class="media-box" style="border-color: #ef4444;"><img src="/static/ui/earthquake_scene.png"
-                    loading="eager" decoding="async"></div>
-        </div>
-
-        <!-- Slide 9: Ready -->
-        <div class="slide" id="slide9">
-            <div class="icon-box"><iconify-icon icon="solar:rocket-bold-duotone"></iconify-icon></div>
-            <h1>全面準備就緒</h1>
-            <p>無論任何場域，OmniSignal 已經為您準備好了一切。請進入主控台，開啟您的智慧播報新紀元。</p>
-            <button class="btn-play" style="margin-top:25px; padding: 18px 45px;"
-                onclick="window.location.href='index.html'">即刻進入實境主控台</button>
-        </div>
-
-        <div class="status-box" id="statusBox" style="display:none;">
-            <div class="dot"></div>
-            <span id="narratorState">AI 智慧導覽進行中...</span>
-        </div>
-
-        <div class="progress-bar" id="progressBar"></div>
     </div>
 
     <script>
-        // Particle Background System
-        const canvas = document.getElementById('particleCanvas');
-        const ctx = canvas.getContext('2d');
-        let particles = [];
-
-        function initParticles() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            particles = [];
-            const count = Math.min(Math.floor(window.innerWidth / 15), 100);
-            for (let i = 0; i < count; i++) {
-                particles.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
-                    vx: (Math.random() - 0.5) * 0.5,
-                    vy: (Math.random() - 0.5) * 0.5,
-                    size: Math.random() * 2 + 1
-                });
+        const videoData = [
+            {
+                title: "全域智慧廣播系統",
+                desc: "整合 AI 數位人、工業 IOT 與雲端排程。這是現代化場域通訊的終極解決方案。",
+                video: "https://assets.mixkit.co/videos/preview/mixkit-top-view-of-a-young-woman-working-on-a-laptop-40073-large.mp4",
+                poster: "omnisignal_video_thumbnail_1773506611678.png",
+                text: "歡迎來到 OmniSignal。這是一場廣播系統的數位轉型。我們結合了虛擬主播與雲端控制，為您定義全情境播報的新標準。"
+            },
+            {
+                title: "企業辦公解決方案",
+                desc: "在快節奏的辦公環境，OmniSignal 提供即時通知、會議播報與分區通訊，打造高效職場環境。",
+                video: "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-a-laptop-in-a-sunny-office-43481-large.mp4",
+                poster: "omnisignal_office_intro.png",
+                text: "企業內部的高效溝通，從 OmniSignal 開始。我們支援多部門分區廣播與即時手機通話，讓訊息傳遞零延遲，提升團隊協作效率。"
+            },
+            {
+                title: "智慧工廠整合",
+                desc: "針對嘈雜的工業環境，提供自動音量調整與緊急警報連動，確保生產線指令精準傳達。",
+                video: "https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-man-working-on-a-computer-43485-large.mp4",
+                poster: "omnisignal_factory_intro.png",
+                text: "在智慧工廠，穩定度就是一切。OmniSignal 採用工業級 Relay 技術，與您的生產設備完美連動。無論是地震預警還是產線通知，都能在第一時間精準到位。"
+            },
+            {
+                title: "醫院與長照中心",
+                desc: "溫柔的語音與無聲看板整合，為病患與家屬提供安靜、資訊清晰的療癒環境。",
+                video: "https://assets.mixkit.co/videos/preview/mixkit-female-service-member-answering-a-call-43482-large.mp4",
+                poster: "omnisignal_healthcare_intro.png",
+                text: "醫療場景需要安靜與精準。我們提供無聲看板與柔和的 AI 真人語音，協助護理人員快速調度，同時維持環境的寧靜與高品質照護體驗。"
             }
-        }
-
-        function drawParticles() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "rgba(30, 123, 216, 0.4)";
-            ctx.strokeStyle = "rgba(30, 123, 216, 0.1)";
-
-            for (let i = 0; i < particles.length; i++) {
-                let p = particles[i];
-                p.x += p.vx;
-                p.y += p.vy;
-
-                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-
-                for (let j = i + 1; j < particles.length; j++) {
-                    let p2 = particles[j];
-                    let dx = p.x - p2.x;
-                    let dy = p.y - p2.y;
-                    let dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < 150) {
-                        ctx.beginPath();
-                        ctx.moveTo(p.x, p.y);
-                        ctx.lineTo(p2.x, p2.y);
-                        ctx.stroke();
-                    }
-                }
-            }
-            requestAnimationFrame(drawParticles);
-        }
-
-        window.addEventListener('resize', initParticles);
-        initParticles();
-        drawParticles();
-
-        // Presentation Logic
-        const slides = [
-            { id: 'slide1', scenario: 'GENERAL', text: "歡迎來到 OmniSignal。這是一場廣播系統的數位轉型。我們將帶您體驗結合了 AI、物聯網與雲端控制的現代化播報方案。" },
-            { id: 'slide2', scenario: 'AI CORE', text: "這是我們頂級的 AI 真人數位主播。不僅具備生動的語音質感，更能完成複雜的跨語言翻譯服務。" },
-            { id: 'slide3', scenario: 'INSTITUTION', text: "在智慧場域環境下，多語系翻譯功能讓溝通無障礙，各類機構都能輕鬆落實多元化播報。當然，全自動化的排程系統也是基本功。" },
-            { id: 'slide4', scenario: 'MALL', text: "進入精品百貨。在這裡，OmniSignal 用溫柔優雅的 AI 聲線與背景音樂，為顧客營造高品質的購物氛圍。" },
-            { id: 'slide5', scenario: 'MARKET', text: "來到果菜市場。在高分貝環境下，系統會自動補償音量並發出高穿透力的播報指令，確保訊息精準傳遞。" },
-            { id: 'slide6', scenario: 'MOBILE', text: "這是強大的行動麥克風功能。老師在巡堂、主管在巡場，拿起手機就能隨時開啟全區實時直播。" },
-            { id: 'slide7', scenario: 'CONTROL', text: "這裡是主控中心。我們採用工業級 USB Relay 技術實施軟硬體對接，讓一切廣播運作都穩定可靠。" },
-            { id: 'slide8', scenario: 'SAFETY', text: "關鍵的地震預警連動。與國家氣象署即時同步，強震前夕自動觸發疏散廣播，守護每一份安全。" },
-            { id: 'slide9', scenario: 'READY', text: "導覽到此結束。OmniSignal 已經準備好在您的場域大顯身手。請點擊按鈕，開始您的數位播報新紀元。" }
         ];
 
-        let currentIdx = 0;
-        let bgm = new Audio('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3');
-        bgm.loop = true;
-        bgm.volume = 0.15;
-        let narrator = new Audio();
+        let currentVideoIdx = 0;
 
-        const logs = [
-            "Syncing with Weather API...",
-            "Checking Relay Node 01...",
-            "AI Voice Core Ready.",
-            "Scenario: Commercial Mall active.",
-            "Broadcasting Test Signal...",
-            "Ready for User Input."
-        ];
-
-        // HUD Updates
-        function updateHud() {
-            const now = new Date();
-            document.getElementById('hudClock').innerText = now.toTimeString().split(' ')[0];
-            document.getElementById('hudCpu').innerText = Math.floor(Math.random() * 10 + 15) + '%';
-
-            if (Math.random() > 0.8) {
-                document.getElementById('hudLog').innerText = logs[Math.floor(Math.random() * logs.length)];
+        function switchVideo(idx) {
+            currentVideoIdx = idx;
+            const data = videoData[idx];
+            
+            // Stop previous
+            if (window.introAudio) {
+                window.introAudio.pause();
+                window.introAudio = null;
             }
-        }
-        setInterval(updateHud, 1000);
+            
+            const video = document.getElementById('introVideo');
+            video.pause();
+            video.src = data.video;
+            video.poster = data.poster;
+            video.load(); // Force reload to show new poster
+            
+            document.getElementById('videoTitle').innerText = data.title;
+            document.getElementById('videoDesc').innerText = data.desc;
+            
+            const btn = document.getElementById('videoPlayOverlay');
+            btn.innerHTML = '<iconify-icon icon="solar:play-bold"></iconify-icon>';
+            btn.style.opacity = '1';
 
-        document.getElementById('btnPlay').addEventListener('click', startPresentation);
-        document.getElementById('btnSkip').addEventListener('click', () => window.location.href = 'index.html');
-
-        async function startPresentation() {
-            try {
-                bgm.play().catch(e => console.warn("BGM play failed:", e));
-                narrator.play().catch(() => { });
-                narrator.pause();
-                console.log("Audio contexts unlocked");
-            } catch (e) {
-                console.warn("Manual audio unlock failed:", e);
-            }
-
-            document.getElementById('hudLayer').style.opacity = '1';
-            document.getElementById('startOverlay').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('startOverlay').style.display = 'none';
-                document.getElementById('btnSkip').style.display = 'block';
-                document.getElementById('statusBox').style.display = 'flex';
-                runSequence();
-            }, 800);
-        }
-
-        async function runSequence() {
-            for (currentIdx = 0; currentIdx < slides.length; currentIdx++) {
-                await showSlide(slides[currentIdx]);
-            }
-        }
-
-        async function showSlide(slideData) {
-            // UI Switch: Safari 有時需要先移除 display: none 再加動畫 class 才能正確觸發
-            const allSlides = document.querySelectorAll('.slide');
-            allSlides.forEach(s => {
-                s.style.visibility = 'hidden';
-                s.classList.remove('active-slide');
+            // Update tab UI
+            document.querySelectorAll('.video-tab').forEach((t, i) => {
+                t.classList.toggle('active', i === idx);
             });
-
-            const currentSlideEl = document.getElementById(slideData.id);
-            if (currentSlideEl) {
-                currentSlideEl.style.visibility = 'visible';
-                document.getElementById('hudScenario').innerText = slideData.scenario || 'GENERAL';
-                document.getElementById('hudLog').innerText = `Activating [${slideData.scenario}] scenario...`;
-                // 強制瀏覽器重繪 (For Safari)
-                void currentSlideEl.offsetWidth;
-                currentSlideEl.classList.add('active-slide');
-            }
-
-            // Reset progress bar
-            const bar = document.getElementById('progressBar');
-            bar.style.transition = 'none';
-            bar.style.width = '0%';
-            void bar.offsetWidth;
-
-            // Start speaking and wait for it to finish
-            try {
-                // 給予一個超時上限，避免 TTS 失敗導致整個簡報卡住
-                const audioPromise = speak(slideData.text);
-                const timeoutPromise = new Promise(r => setTimeout(r, 18000)); // 18秒超時
-                await Promise.race([audioPromise, timeoutPromise]);
-            } catch (e) {
-                console.error("Slide error:", e);
-                await new Promise(r => setTimeout(r, 2000));
-            }
-
-            // Brief pause between slides
-            await new Promise(r => setTimeout(r, 1000));
         }
 
-        function speak(text) {
-            return new Promise(async (resolve) => {
-                let resolved = false;
-                const safeResolve = () => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve();
-                    }
-                };
+        async function toggleIntroContent() {
+            const playBtn = document.getElementById('videoPlayOverlay');
+            const video = document.getElementById('introVideo');
+            const data = videoData[currentVideoIdx];
+            
+            if (window.introAudio && !window.introAudio.paused) {
+                window.introAudio.pause();
+                video.pause();
+                playBtn.innerHTML = '<iconify-icon icon="solar:play-bold"></iconify-icon>';
+                playBtn.style.opacity = '1';
+                return;
+            }
 
-                try {
+            try {
+                if (!window.introAudio) {
+                    playBtn.innerHTML = '<iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon>';
+                    
                     const response = await fetch('/api/tts_preview', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            text: text,
-                            lang: 'zh-TW-HsiaoChenNeural',
-                            rate: '0%',
-                            gender: 'female'
+                            text: data.text,
+                            lang: 'zh-TW',
+                            gender: 'female',
+                            rate: 0
                         })
                     });
 
-                    if (!response.ok) throw new Error("API fail");
+                    if (!response.ok) throw new Error('TTS Failed');
                     const blob = await response.blob();
-                    const url = URL.createObjectURL(blob);
-
-                    // 重複使用已「授權」播放的音軌物件
-                    narrator.src = url;
-
-                    // Track audio duration for progress bar
-                    narrator.onloadedmetadata = () => {
-                        const bar = document.getElementById('progressBar');
-                        bar.style.transition = `width ${narrator.duration}s linear`;
-                        bar.style.width = '100%';
-                    };
-
-                    narrator.onended = () => {
-                        URL.revokeObjectURL(url);
-                        safeResolve();
-                    };
-
-                    narrator.onerror = () => {
-                        console.error("Narrator audio error");
-                        safeResolve();
-                    };
-
-                    const playPromise = narrator.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(error => {
-                            console.error("Narrator play blocked:", error);
-                            // 退回 SpeechSynthesis
-                            fallbackSpeak(text, safeResolve);
-                        });
-                    }
-                } catch (e) {
-                    console.error("TTS Error:", e);
-                    fallbackSpeak(text, safeResolve);
+                    window.introAudio = new Audio(URL.createObjectURL(blob));
                 }
-            });
-        }
 
-        function fallbackSpeak(text, resolve) {
-            try {
-                const msg = new SpeechSynthesisUtterance(text);
-                msg.lang = 'zh-TW';
-                msg.onend = () => resolve();
-                msg.onerror = () => resolve();
-                window.speechSynthesis.speak(msg);
+                window.introAudio.play();
+                video.play();
+                
+                playBtn.innerHTML = '<iconify-icon icon="solar:pause-bold"></iconify-icon>';
+                playBtn.style.opacity = '0.3';
+                
+                window.introAudio.onended = () => {
+                    playBtn.innerHTML = '<iconify-icon icon="solar:play-bold"></iconify-icon>';
+                    playBtn.style.opacity = '1';
+                    video.pause();
+                    video.currentTime = 0;
+                    window.introAudio = null;
+                };
+
             } catch (e) {
-                console.error("SpeechSynthesis failed:", e);
-                setTimeout(resolve, 3000); // 失敗也繼續
+                console.error(e);
+                alert("播放影音介紹失敗，請確認與伺服器連線正常。");
+                playBtn.innerHTML = '<iconify-icon icon="solar:play-bold"></iconify-icon>';
             }
         }
 
-        // ==========================================
-        // Render Free Tier Keep-Alive Mechanism
-        // Pings the server every 10 minutes (600000 ms)
-        // to prevent it from going to sleep (15-min limit)
-        // ==========================================
-        setInterval(() => {
-            fetch(window.location.origin + '/?keepalive=' + Date.now())
-                .then(res => console.log('[Render Keep-Alive] Ping successful:', res.status))
-                .catch(err => console.error('[Render Keep-Alive] Ping failed:', err));
-        }, 600000); // 10 minutes
+        function openIntroModal() {
+            const modal = document.getElementById('introModal');
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+            switchVideo(0); // Start with first
+        }
+
+        function closeIntroModal() {
+            const modal = document.getElementById('introModal');
+            modal.classList.remove('active');
+            setTimeout(() => modal.style.display = 'none', 500);
+            
+            const video = document.getElementById('introVideo');
+            if(video) video.pause();
+            if (window.introAudio) {
+                window.introAudio.pause();
+                window.introAudio = null;
+            }
+        }
     </script>
 </body>
 
-
 </html>
-```
