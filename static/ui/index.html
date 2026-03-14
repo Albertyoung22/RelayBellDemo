@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 
 <head>
@@ -117,7 +117,7 @@
       style="background:#f87171;border:none;border-radius:999px;color:white;padding:10px 14px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);">登出</button>
   </div>
   <header>
-    <div class="title">📥 廣播主控台</div>
+    <div class="title">📥 OmniSignal 全域廣播主控台</div>
     <style>
       header .links .sep {
         color: rgba(255, 255, 255, 0.4);
@@ -134,7 +134,7 @@
       <a href="market.html">🍎 果菜市場</a>
       <a href="sched.html">🕐 排程</a>
       <a href="single_reservation.html">📅 預約</a>
-      <a href="tt.html">📚 課表</a>
+      <a href="tt.html">📅 規律任務</a>
       <span class="sep">|</span>
       <a href="taigi_edu.html">🇹🇼 本土語</a>
       <a href="eew.html">🌋 地震</a>
@@ -200,7 +200,7 @@
         }
 
         connectedCallback() {
-          console.log("[UI] RelayBell Console v2.1.2-GUID Connected");
+          console.log("[UI] OmniSignal Console v2.1.2-GUID Connected");
           this.render();
           this.bind();
           // this.loadLocalSettings(); // Removed memory per user request
@@ -818,7 +818,7 @@
 
                   <div class="card" style="margin-top:12px;">
                     <h3>ℹ️ 系統資訊</h3>
-                    <div class="row tight"><span class="hint">課表：</span> <span id="ttInfo" class="mono">—</span></div>
+                    <div class="row tight"><span class="hint">規律任務：</span> <span id="ttInfo" class="mono">—</span></div>
                     <div class="row tight"><span class="hint">Relay：</span> <a href="relay4.html" id="relayInfo" class="mono" style="color:#1e7bd8; text-decoration:underline; font-weight:bold;">— (點此進入分區控制)</a></div>
                   </div>
 
@@ -2504,6 +2504,17 @@
 
       connect();
     })();
+
+    // ==========================================
+    // Render Free Tier Keep-Alive Mechanism
+    // Pings the server every 10 minutes (600000 ms)
+    // to prevent it from going to sleep (15-min limit)
+    // ==========================================
+    setInterval(() => {
+      fetch(window.location.origin + '/?keepalive=' + Date.now())
+        .then(res => console.log('[Render Keep-Alive] Ping successful:', res.status))
+        .catch(err => console.error('[Render Keep-Alive] Ping failed:', err));
+    }, 600000); // 10 minutes
   </script>
 </body>
 

@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>📚 課表控管</title>
+  <title>📅 規律任務控管 - OmniSignal</title>
   <style>
     :root {
       --brand: #1e7bd8;
@@ -314,14 +314,14 @@
 
 <body>
   <header>
-    <div class="title">課表控管</div>
+    <div class="title">規律任務控管</div>
     <div class="links">
       <span id="nowText"
         style="margin-right:12px;opacity:.9;display:inline-block;min-width:140px;text-align:right">--:--:--</span>
       <a href="index.html">🎛 主控台</a>
       <a href="sched.html">🕐 排程</a>
       <a href="single_reservation.html">📅 預約</a>
-      <a href="tt.html">📚 課表</a>
+      <a href="tt.html">📅 規律任務</a>
       <span class="sep">|</span>
       <a href="taigi_edu.html">🇹🇼 本土語</a>
       <a href="eew.html">🌋 地震</a>
@@ -342,14 +342,14 @@
 
   <main>
     <section class="card">
-      <h2 class="subtitle">課表總覽</h2>
+      <h2 class="subtitle">規律任務總覽</h2>
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
         <div class="toggle">
           <label style="display:flex;align-items:center;gap:10px;">
             <input id="tt-enabled" type="checkbox" />
             <span>
               <strong>啟用自動打鐘</strong>
-              <div class="muted">依據課表自動播放 / 執行指令</div>
+              <div class="muted">依據規律任務自動播放 / 執行指令</div>
             </span>
           </label>
           <span id="tt-pill" class="badge">狀態判定中</span>
@@ -359,8 +359,8 @@
           <label style="display:flex;align-items:center;gap:10px;">
             <input id="tt-sat" type="checkbox" />
             <span>
-              <strong>週六視為上課日</strong>
-              <div class="muted">勾選後，週六正常觸發</div>
+              <strong>週六視為有效工作日</strong>
+              <div class="muted">勾選後，週六正常觸發任務</div>
             </span>
           </label>
         </div>
@@ -383,7 +383,7 @@
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
         <button class="ghost" id="btn-tt-save-remote">同步通知後端</button>
         <button class="flat" id="btnReload">重新載入</button>
-        <button class="primary" id="btnSave">儲存課表</button>
+        <button class="primary" id="btnSave">儲存規律任務</button>
       </div>
     </section>
 
@@ -391,8 +391,8 @@
       <div class="toolbar">
         <div style="display:flex;align-items:center;gap:12px">
           <div>
-            <div class="subtitle" style="margin-bottom:0">課表設定</div>
-            <div class="muted">共 11 節，支援週一至週日</div>
+            <div class="subtitle" style="margin-bottom:0">規律任務設定</div>
+            <div class="muted">支援週一至週日</div>
           </div>
           <div style="display:flex;gap:4px">
             <button class="flat" id="btnPrevWeek" title="上一週">◀</button>
@@ -812,7 +812,7 @@
         $('tt-last-sync').textContent = `最後同步：${new Date().toLocaleString()}`;
       } catch (err) {
         console.error('[TT] Reload error:', err);
-        alert('載入課表失敗：' + err.message);
+        alert('載入規律任務失敗：' + err.message);
       }
     }
 
@@ -979,7 +979,7 @@
         });
 
         dlg.close();
-        alert(`已更新設定 (刪除 ${toDelete.size} 筆)，請記得按下「儲存課表」以生效。`);
+        alert(`已更新設定 (刪除 ${toDelete.size} 筆)，請記得按下「儲存規律任務」以生效。`);
       });
 
       $('btnPrevWeek').addEventListener('click', () => { state.weekOffset--; updateDateHeaders(); });

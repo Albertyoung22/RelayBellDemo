@@ -469,6 +469,7 @@
 
         // --- TTS Helper ---
         function speakText(text) {
+            /* Now handled by server-broadcasted audio
             try {
                 if (!window.speechSynthesis) return;
                 const ut = new SpeechSynthesisUtterance(text);
@@ -478,6 +479,7 @@
             } catch (e) {
                 console.error("TTS Error:", e);
             }
+            */
         }
 
         // --- Chat UI Functions ---

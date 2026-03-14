@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>📚 使用說明 - 校園廣播系統</title>
+    <title>📚 使用說明 - OmniSignal 全域廣播系統</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e7bd8">
     <link rel="icon" type="image/png" href="favicon.png">
@@ -31,7 +31,7 @@
         <!-- Hero -->
         <div class="hero">
             <h1>📚 主控端使用說明</h1>
-            <p>完整的操作指南，讓您快速上手校園廣播系統</p>
+            <p>完整的操作指南，讓您快速上手全域廣播系統</p>
         </div>
 
         <!-- 目錄 -->
@@ -43,7 +43,7 @@
                 <li><a href="#media-playback">多媒體播放</a></li>
                 <li><a href="#voice-recording">即時錄音廣播</a></li>
                 <li><a href="#scheduling">排程管理</a></li>
-                <li><a href="#timetable">課表設定</a></li>
+                <li><a href="#timetable">規律任務設定</a></li>
                 <li><a href="#reservation">單次預約</a></li>
                 <li><a href="#mobile-broadcast">行動廣播站</a></li>
                 <li><a href="#silent-broadcast">無聲廣播 (數位看板)</a></li>
@@ -94,7 +94,7 @@
                     <h4>🖥️ 桌面 UI (Tkinter)</h4>
                     <ul>
                         <li>主控台 - 即時日誌與快速操作</li>
-                        <li>課表 - 課表編輯與管理</li>
+                        <li>規律任務 - 任務編輯與管理</li>
                         <li>檔案 - MP3 上傳與管理</li>
                         <li>排程 - 自訂排程設定</li>
                         <li>設定 - 系統參數調整</li>
@@ -111,9 +111,9 @@
                 </div>
             </div>
             <div style="margin-top:20px; text-align:center;">
-                <img src="img_web_ui_main.png" alt="RelayBell Web Interface" class="screenshot"
+                <img src="img_web_ui_main.png" alt="OmniSignal Web Interface" class="screenshot"
                     style="border: 2px solid #ccc; max-width: 100%;">
-                <p style="font-size:14px; color:#666; margin-top:5px;">▲ RelayBell Web 操作介面 (實際畫面)</p>
+                <p style="font-size:14px; color:#666; margin-top:5px;">▲ OmniSignal Web 操作介面 (實際畫面)</p>
             </div>
         </div>
 
@@ -202,7 +202,7 @@
             </ol>
             <div class="alert alert-info">
                 <strong>💡 應用場景</strong>
-                適合外語教學、外賓參訪、或東南亞語系的校園廣播。
+                適合外語教學、外賓參訪、或多語系工作環境的播報。
             </div>
         </div>
 
@@ -299,7 +299,7 @@
 
             <div class="feature-box">
                 <h4>✨ 什麼是遠端麥克風？</h4>
-                <p>簡單說，就是把您的手機或筆電當成校長的麥克風！</p>
+                <p>簡單說，就是把您的手機或筆電當成管理者的麥克風！</p>
                 <p>只要您的裝置有麥克風，連上這個網頁，就能隨時隨地對全校廣播，不用跑到主控室。</p>
             </div>
 
@@ -423,33 +423,33 @@
             </div>
 
             <div class="alert alert-info">
-                <strong>💡 關於「課表」與「排程」的差別</strong>
+                <strong>💡 關於「規律任務」與「自訂排程」的差別</strong>
                 <br>
                 <strong>排程 (Schedule)</strong>：適合特殊的、單次的、或非上課鐘聲類的任務（如打掃、升旗）。<br>
-                <strong>課表 (Timetable)</strong>：專門管理每天固定的上下課鐘聲（早自習、第一節、下課...），結構較固定。
+                <strong>規律任務 (Regular Tasks)</strong>：專門管理每天固定的播報時點（早晨、開工、休息、收工...），結構較固定。
             </div>
         </div>
 
         <!-- 課表設定 -->
         <div class="section" id="timetable">
-            <h2>📚 課表設定教學</h2>
+            <h2>📅 規律任務設定教學</h2>
 
-            <h3>Q: 課表跟排程有什麼不同？</h3>
+            <h3>Q: 規律任務跟自訂排程有什麼不同？</h3>
             <div class="alert alert-info">
                 <strong>簡單分辨法：</strong>
                 <ul>
-                    <li><strong>課表</strong> = 學校每天固定的上下課鐘聲（7:30早自習、8:10第一節...）。</li>
-                    <li><strong>排程</strong> = 偶爾才做一次的廣播（週會、大掃除、英聽測驗）。</li>
+                    <li><strong>規律任務</strong> = 每天固定的例行事項（8:00早晨廣播、12:00休息、17:00收工...）。</li>
+                    <li><strong>自訂排程</strong> = 偶爾才做一次的活動（週會、大掃除、特殊活動）。</li>
                 </ul>
             </div>
 
-            <h3>實戰演練：設定週一的課表</h3>
+            <h3>實戰演練：設定週一的規律任務</h3>
             <p>假設我們要設定週一早上的作息：<strong>08:00 升旗典禮、08:10 第一節上課</strong>。</p>
 
             <ol class="step-list">
                 <li>
-                    <strong>步驟 1：進入課表頁面</strong>
-                    <p>點擊導覽列的 <code>📚 課表</code> 或訪問 <code>tt.html</code>。</p>
+                    <strong>步驟 1：進入規律任務頁面</strong>
+                    <p>點擊導覽列的 <code>📅 規律任務</code> 或訪問 <code>tt.html</code>。</p>
                 </li>
                 <li>
                     <strong>步驟 2：選擇星期</strong>
@@ -478,11 +478,11 @@
                 </li>
                 <li>
                     <strong>步驟 5：完成儲存</strong>
-                    <p>確認列表無誤後，務必點擊頁面下方的 <span class="button-demo">💾 儲存課表</span> 按鈕。</p>
+                    <p>確認列表無誤後，務必點擊頁面下方的 <span class="button-demo">💾 儲存規律任務</span> 按鈕。</p>
                 </li>
             </ol>
 
-            <h3>進階：課表動作代碼表</h3>
+            <h3>進階：規律任務動作代碼表</h3>
             <div class="grid-2">
                 <div class="card">
                     <h4>🔔 系統鐘聲</h4>
@@ -713,7 +713,7 @@
                 <p>觀眾端（學生電腦）必須安裝並執行 <code>Student Agent</code> 才能自動彈出直播視窗。</p>
             </div>
 
-            <p>這是一個專為校園設計的低延遲直播系統，老師可以直接使用電腦或手機的鏡頭，對全校或特定班級進行畫面廣播。</p>
+            <p>這是一個專為各種場域設計的低延遲直播系統，管理員可以直接使用電腦或手機的鏡頭，對全區或特定接收端進行畫面廣播。</p>
 
             <h3>功能特色</h3>
             <ul>
@@ -1068,7 +1068,7 @@
     </div>
 
     <footer style="text-align:center; padding:40px 20px; color:#64748b; font-size:14px;">
-        <p>© 2026 RelayBell 校園廣播系統 v0.1.16</p>
+        <p>© 2026 OmniSignal 智控廣播系統 v0.1.16</p>
         <p>Designed for Education & Public Broadcasting</p>
     </footer>
 </body>

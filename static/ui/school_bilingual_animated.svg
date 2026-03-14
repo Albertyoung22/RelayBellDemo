@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="15" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <style>
+      .node { fill: url(#glow); filter: url(#shadow); }
+      .text-lang { font-family: 'Outfit', 'Noto Sans TC', sans-serif; font-size: 26px; font-weight: 800; fill: #ffffff; text-anchor: middle; }
+      
+      .pulse-ring { 
+        stroke: #3b82f6; 
+        stroke-width: 2; 
+        fill: none; 
+        animation: pulse 3s cubic-bezier(0.21, 0.53, 0.56, 0.8) infinite; 
+      }
+      .pulse-ring2 { 
+        animation: pulse 3s cubic-bezier(0.21, 0.53, 0.56, 0.8) infinite; 
+        animation-delay: 1.5s;
+        stroke: #8b5cf6; 
+        stroke-width: 2; 
+        fill: none; 
+      }
+      @keyframes pulse {
+        0% { r: 50px; opacity: 1; }
+        100% { r: 350px; opacity: 0; }
+      }
+      
+      .bubble { animation: float-pop 6s infinite; transform-origin: center; opacity: 0; filter: url(#shadow); }
+      .b1 { animation-delay: 0s; }
+      .b2 { animation-delay: 1.5s; }
+      .b3 { animation-delay: 3s; }
+      .b4 { animation-delay: 4.5s; }
+      
+      @keyframes float-pop {
+        0%, 10% { transform: translateY(20px) scale(0.8); opacity: 0; }
+        20%, 40% { transform: translateY(0px) scale(1); opacity: 1; }
+        50%, 100% { transform: translateY(-20px) scale(1.1); opacity: 0; }
+      }
+      
+      .bell-icon { animation: ring 4s infinite; transform-origin: 50% 30%; }
+      @keyframes ring {
+        0%, 80%, 100% { transform: rotate(0deg); }
+        82%, 86%, 90% { transform: rotate(15deg); }
+        84%, 88%, 92% { transform: rotate(-15deg); }
+      }
+      .link-line { stroke: rgba(59, 130, 246, 0.4); stroke-width: 3; stroke-dasharray: 6,8; animation: dash 20s linear infinite; }
+      @keyframes dash {
+        to { stroke-dashoffset: -200; }
+      }
+    </style>
+  </defs>
+  
+  <rect width="800" height="450" fill="url(#bg)"/>
+  
+  <!-- Network lines -->
+  <line x1="400" y1="225" x2="200" y2="100" class="link-line"/>
+  <line x1="400" y1="225" x2="600" y2="100" class="link-line"/>
+  <line x1="400" y1="225" x2="200" y2="350" class="link-line"/>
+  <line x1="400" y1="225" x2="600" y2="350" class="link-line"/>
+  
+  <!-- Central Pulse -->
+  <circle cx="400" cy="225" class="pulse-ring" />
+  <circle cx="400" cy="225" class="pulse-ring2" />
+  
+  <!-- Central Node -->
+  <circle cx="400" cy="225" r="55" class="node"/>
+  
+  <!-- Bell & Book Icon within Center -->
+  <g class="bell-icon" transform="translate(378, 192)">
+    <path fill="#ffffff" d="M22 6c-2.8 0-5 2.2-5 5v3.4c0 3.7-4 6.6-8 6.6v2h34v-2c-4 0-8-2.9-8-6.6V11c0-2.8-2.2-5-5-5zm-5 18c0 2.8 2.2 5 5 5s5-2.2 5-5h-10z" transform="scale(1.2)"/>
+  </g>
+  
+  <!-- Floating Text Bubbles -->
+  <g class="bubble b1" transform="translate(140, 75)">
+    <rect width="120" height="50" rx="25" fill="#3b82f6" fill-opacity="0.9"/>
+    <text x="60" y="34" class="text-lang">你好</text>
+  </g>
+  
+  <g class="bubble b2" transform="translate(530, 75)">
+    <rect width="140" height="50" rx="25" fill="#8b5cf6" fill-opacity="0.9"/>
+    <text x="70" y="34" class="text-lang">Xin chào</text>
+  </g>
+  
+  <g class="bubble b3" transform="translate(120, 325)">
+    <rect width="160" height="50" rx="25" fill="#10b981" fill-opacity="0.9"/>
+    <text x="80" y="35" class="text-lang" style="font-family:'Noto Sans TC', sans-serif">敖早</text>
+  </g>
+  
+  <g class="bubble b4" transform="translate(540, 325)">
+    <rect width="120" height="50" rx="25" fill="#f43f5e" fill-opacity="0.9"/>
+    <text x="60" y="34" class="text-lang">Halo</text>
+  </g>
+  
+  <!-- Informational Labels -->
+  <rect x="300" y="300" width="200" height="30" rx="15" fill="rgba(255,255,255,0.1)" />
+  <text x="400" y="321" class="text-lang" style="font-size: 14px; font-weight: 600; fill: #cbd5e1; letter-spacing: 1px;">AI 雙語與母語核心</text>
+</svg>

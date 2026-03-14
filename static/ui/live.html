@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>校園直播主控台 🎥</title>
+    <title>OmniSignal 直播主控台 🎥</title>
     <style>
         :root {
             --primary: #f44336;
@@ -339,12 +339,12 @@
 
 <body>
     <!-- Sidebar Toggle -->
-    <button id="btn-toggle-sidebar" onclick="toggleSidebar()">👥 選擇觀眾</button>
+    <button id="btn-toggle-sidebar" onclick="toggleSidebar()">👥 選擇觀眾/接收端</button>
 
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <span>選擇班級 (多選)</span>
+            <span>選擇接收端 (多選)</span>
             <button onclick="toggleSidebar()"
                 style="background:none;border:none;color:#aaa;font-size:1.2rem;cursor:pointer">✕</button>
         </div>
@@ -360,7 +360,7 @@
         <div style="padding:12px;border-top:1px solid #333">
             <button onclick="openWatchOnSelected()"
                 style="width:100%;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-weight:bold;cursor:pointer">
-                📺 讓所選學生收看
+                📺 讓所選接收端收看
             </button>
         </div>
     </div>
@@ -463,7 +463,7 @@
             list.sort((a, b) => (a.group || "").localeCompare(b.group || "") || (a.hostname || "").localeCompare(b.hostname || ""));
 
             if (list.length === 0) {
-                studentListEl.innerHTML = '<div style="padding:1rem; text-align:center; color:gray;">無連線班級</div>';
+                studentListEl.innerHTML = '<div style="padding:1rem; text-align:center; color:gray;">無連線接收端</div>';
                 return;
             }
 
@@ -512,7 +512,7 @@
         async function openWatchOnSelected() {
             const targets = Array.from(selectedIds);
             if (targets.length === 0) {
-                alert("請先選擇要播放的學生電腦！");
+                alert("請先選擇要播放的接收端電腦！");
                 return;
             }
 
