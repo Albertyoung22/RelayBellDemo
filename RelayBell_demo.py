@@ -1071,6 +1071,12 @@ app.template_folder = UI_TEMPLATE_DIR
 
 sock = Sock(app)
 
+@app.route('/ping')
+def api_ping():
+    """Simple health check endpoint for Render keep-alive."""
+    return "ok"
+
+
 app.secret_key = secrets.token_hex(16)
 
 @app.route('/api/speak_v2', methods=['POST'])
@@ -15831,22 +15837,32 @@ def keep_render_alive():
     import requests
     time.sleep(30) # Wait for server to boot
     while True:
-        url = STATE.get("render_url")
+        # 1. Try environment variable set by Render
+        url = os.environ.get("RENDER_EXTERNAL_URL")
+        
+        # 2. Try manual config in STATE
+        if not url:
+            url = STATE.get("render_url")
+            
         if url:
             try:
                 # Ensure it's a full URL
-                if not url.startswith("http"):
-                    test_url = f"https://{url}"
-                else:
-                    test_url = url
+                test_url = url if url.startswith("http") else f"https://{url}"
+                # Append /ping to minimize processing
+                ping_url = f"{test_url.rstrip('/')}/ping"
                 
-                print(f"[KeepAlive] Pinging {test_url}...")
-                requests.get(test_url, timeout=10)
+                print(f"[KeepAlive] Pinging {ping_url}...")
+                requests.get(ping_url, timeout=10)
             except Exception as e:
                 print(f"[KeepAlive] Ping failed: {e}")
+        else:
+            # If no URL found but we are on Render, try to log it
+            if os.environ.get("RENDER"):
+                print("[KeepAlive] Running on Render but RENDER_EXTERNAL_URL not found. Please set 'render_url' in STATE or environment.")
         
         # Ping every 10 minutes (Render timeout is 15m)
         time.sleep(600)
+
 
 threading.Thread(target=keep_render_alive, daemon=True).start()
 
