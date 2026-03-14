@@ -8,13 +8,13 @@ BROADCAST_CACHE = collections.deque(maxlen=10)
 
 UDP 語音接收端（含桌面 UI｜保留全部原功能｜前端頁面獨立，不內建在程式裡）
 
-- 保留：Tkinter 桌面 UI、UDP 接收、TTS、MP3/YouTube 播放、上傳清單、課表排程、ngrok（可選）
+- 保留：Tkinter 桌面 UI、UDP 接收、TTS、MP3/YouTube 播放、上傳清單、自動排程、ngrok（可選）
 
-- Web 僅提供 API：/translate（mini_translator 流程）、/send、/sendmp3、/cmd、/state、/files、/upload、/download、/delete、/timetable/*、/schedules/*、/logs*、/piper/*
+- Web 僅提供 API：/translate（mini_translator 流程）、/send、/sendmp3、/cmd /state /files /upload /download /delete /timetable/* /schedules/* /logs* /piper/*
 
 - 內建 Edge TTS → Piper（第二順位）→ gTTS → SAPI5
 
-- UI 與原需求一致：主控台、課表、檔案/上傳、自訂排程 4 分頁（外觀維持）
+- UI 與原需求一致：主控台、排程、檔案/上傳、自訂任務 4 分頁（外觀維持）
 
 
 
@@ -57,7 +57,7 @@ PORT = 8888                 # UDP 監聽埠
 
 YT_AUTO_CLOSE_MIN = 30      # 全螢幕逾時自關閉（分鐘）←保留欄位
 
-TIMETABLE_SCAN_SEC = 5      # 課表掃描週期（秒）
+TIMETABLE_SCAN_SEC = 5      # 排程掃描週期（秒）
 
 DISABLE_UDP = False         # True 時不啟動 UDP 接收緒（純本機）
 
@@ -433,7 +433,7 @@ from functools import wraps
 from urllib.parse import quote
 _HAS_PYGAME = False
 print("========================================")
-print(" RelayBell Demo Web System v2.1.2-GUID")
+print(" OmniSignal Demo System v2.1.2-GUID")
 print("========================================")
 
 import yt_dlp
@@ -1280,8 +1280,8 @@ def api_ai_script():
             return jsonify(ok=False, error="Missing keyword"), 400
             
         system_prompt = """
-        你現在是台南市國中小的廣播系統 AI 助理。
-        請根據使用者提供的「關鍵字」，生成一段約 50-100 字，語氣親切、正式的校園廣播稿。
+        你現在是專業的智慧廣播系統 AI 助理。
+        請根據使用者提供的「關鍵字」，生成一段約 50-100 字，語氣親切、正式的播報稿。
         
         【重要規範】
         1. 僅輸出「純文字」內容，絕對禁止使用任何表情符號 (❌😊)、Markdown 格式 (❌**粗體**)、等號 (=) 或其他特殊符號。
@@ -5657,7 +5657,7 @@ def _load_timetable_from_disk():
 
     except Exception as e:
 
-        text_area_insert(f"❌ 載入課表失敗：{e}")
+        text_area_insert(f"❌ 載入規律任務失敗：{e}")
 
     timetable_data = data
 
@@ -5685,7 +5685,7 @@ def _load_timetable_from_disk():
 
     if 'timetable_status_var' in globals():
 
-        ui_safe(timetable_status_var.set, f" 課表：{'啟用' if timetable_enabled else '停用'}，已載入 {STATE['timetable']['count']} 筆")
+        ui_safe(timetable_status_var.set, f" 規律任務：{'啟用' if timetable_enabled else '停用'}，已載入 {STATE['timetable']['count']} 筆")
 
     if 'timetable_path_var' in globals():
 
@@ -5803,7 +5803,7 @@ def update_next_label():
 
         if not timetable_enabled:
 
-            ui_safe(timetable_next_var.set, " 下一次：—（自動打鐘關閉）"); return
+            ui_safe(timetable_next_var.set, " 下一次：—（自動播報關閉）"); return
 
         nxt = compute_next_ring()
 
@@ -5839,7 +5839,7 @@ def _trigger_action(action: str, label: str = "", src: str = "Timetable", idx: i
 
     sender = f"{src}{'' if idx is None else '#'+str(idx)}"
 
-    text_area_insert(f" 課表觸發（{sender}）：{label or action}")
+    text_area_insert(f" 規律任務觸發（{sender}）：{label or action}")
 
     save_to_csv(f"Schedule:{label or action}", sender)
 
@@ -5849,7 +5849,7 @@ def _trigger_action(action: str, label: str = "", src: str = "Timetable", idx: i
 
     except Exception as e:
 
-        text_area_insert(f"❌ 課表觸發失敗：{e}")
+        text_area_insert(f"❌ 規律任務觸發失敗：{e}")
 
 
 
@@ -5913,7 +5913,7 @@ def timetable_scheduler_loop():
 
         except Exception as e:
 
-            text_area_insert(f"⚠️ 課表排程器錯誤：{e}")
+            text_area_insert(f"⚠️ 規律任務排程器錯誤：{e}")
 
         time.sleep(TIMETABLE_SCAN_SEC)
 
@@ -5931,7 +5931,7 @@ def timetable_play_index(idx: int):
 
             return
 
-    text_area_insert(f"⚠️ 課表索引超出範圍：{idx}")
+    text_area_insert(f"⚠️ 規律任務索引超出範圍：{idx}")
 
 
 
@@ -6072,7 +6072,7 @@ def handle_msg(text, addr):
 
         _load_timetable_from_disk()
 
-        text_area_insert(" 已重新載入課表")
+        text_area_insert(" 已重新載入規律任務")
 
         return
 
@@ -6087,7 +6087,7 @@ def handle_msg(text, addr):
 
     if text == "ScheduleEnable":
         timetable_enabled = True; STATE["timetable"]["enabled"] = True
-        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 課表：啟用")
+        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 規律任務：啟用")
         return
 
 
@@ -6096,7 +6096,7 @@ def handle_msg(text, addr):
 
         timetable_enabled = False; STATE["timetable"]["enabled"] = False
 
-        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 課表：停用")
+        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 規律任務：停用")
 
         return
 
@@ -11564,7 +11564,7 @@ def api_timetable_enable():
 
         def _apply_ui():
 
-            status = " 課表：啟用" if enabled else " 課表：停用"
+            status = " 規律任務：啟用" if enabled else " 規律任務：停用"
 
             if 'timetable_status_var' in globals():
 
@@ -13332,7 +13332,7 @@ except Exception as e:
 
 
 
-root.title("UDP 語音接收端（專業版）")
+root.title("OmniSignal | 專業全域廣播系統")
 
 root.geometry("1024x768")
 
@@ -15168,15 +15168,15 @@ flush_text_buffer_if_any()
 
 # ---- Tab 2:  課表 ----
 
-# ---- Tab 2:  課表 ----
+# ---- Tab 2:  規律任務 ----
 
-tab_tt = tk.Frame(notebook, bg=THEME["bg_root"]); notebook.add(tab_tt, text=" 課表")
+tab_tt = tk.Frame(notebook, bg=THEME["bg_root"]); notebook.add(tab_tt, text=" 規律任務")
 
 tt_top = tk.Frame(tab_tt, bg=THEME["bg_card"], highlightbackground=THEME["border"], highlightthickness=1)
 
 tt_top.pack(fill="x", padx=0, pady=(0, 16))
 
-timetable_status_var = tk.StringVar(value=" 課表：—")
+timetable_status_var = tk.StringVar(value=" 規律任務：—")
 
 tk.Label(tt_top, textvariable=timetable_status_var, font=THEME["font_bold"], bg=THEME["bg_card"]).pack(side="left", padx=(16,10), pady=12)
 
