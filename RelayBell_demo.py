@@ -16067,3 +16067,36 @@ except Exception as e:
             f.write(err_msg)
     except: pass
     input("Press Enter to exit...")
+
+# =======================================
+# == [Keep-Alive] Render Sleep Prevention ==
+# =======================================
+def keep_alive_pinger():
+    """
+    Prevents Render free tier from sleeping by pinging itself every 10 minutes.
+    """
+    # Prefer RENDER_EXTERNAL_URL from environment, fallback to STATE detection if available
+    url = os.environ.get("RENDER_EXTERNAL_URL") or STATE.get("render_url")
+    
+    if not url:
+        # If no URL is found, we try to construct it or wait
+        time.sleep(30) # Wait a bit for initialization
+        url = os.environ.get("RENDER_EXTERNAL_URL") or STATE.get("render_url")
+
+    if not url:
+        print("⚠️ [Keep-Alive] No RENDER_EXTERNAL_URL found, pinger aborted.")
+        return
+        
+    print(f"🚀 [Keep-Alive] Pinger started for: {url}")
+    while True:
+        try:
+            time.sleep(600)  # Ping every 10 minutes (Render timeout is 15 mins)
+            response = requests.get(url, timeout=15)
+            print(f"✅ [Keep-Alive] Self-ping successful: {response.status_code}")
+        except Exception as e:
+            print(f"⚠️ [Keep-Alive] Self-ping failed: {e}")
+
+# Only start if running on Render
+if os.environ.get('RENDER') or os.environ.get('RENDER_EXTERNAL_URL'):
+    import threading
+    threading.Thread(target=keep_alive_pinger, daemon=True).start()
