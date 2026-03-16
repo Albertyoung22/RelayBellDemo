@@ -5,16 +5,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OmniSignal | 全域智慧廣播系統</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+TC:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
     <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
     <style>
         :root {
             --primary: #2563eb;
             --primary-light: #60a5fa;
-            --bg: #0f172a;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
+            --bg: #f8fafc;
+            --card-bg: rgba(255, 255, 255, 0.7);
+            --text-main: #0f172a;
+            --text-muted: #475569;
             --accent: #8b5cf6;
         }
 
@@ -40,8 +42,8 @@
             align-items: center;
             justify-content: center;
             padding: 80px 20px;
-            background: radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.15), transparent 40%),
-                        radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.1), transparent 40%);
+            background: radial-gradient(circle at 20% 20%, rgba(37, 99, 235, 0.05), transparent 40%),
+                radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.05), transparent 40%);
         }
 
         .hero-image {
@@ -51,9 +53,9 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.5;
+            opacity: 0.8;
             z-index: -1;
-            filter: brightness(0.6);
+            filter: brightness(0.9) contrast(1.05);
         }
 
         .container {
@@ -73,7 +75,7 @@
             font-weight: 800;
             letter-spacing: -2px;
             margin-bottom: 20px;
-            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            background: linear-gradient(135deg, #1e293b 0%, #64748b 100%);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -123,22 +125,24 @@
         }
 
         .btn-outline {
-            background: rgba(255, 255, 255, 0.05);
-            color: white;
-            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.5);
+            color: var(--text-main);
+            border-color: rgba(15, 23, 42, 0.1);
             backdrop-filter: blur(10px);
         }
 
         .btn-outline:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: white;
             border-color: var(--primary);
             transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
         }
 
         .btn-vid {
             background: white;
             color: var(--primary);
-            box-shadow: 0 10px 20px rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(37, 99, 235, 0.2);
+            box-shadow: 0 10px 20px rgba(37, 99, 235, 0.1);
         }
 
         .btn-vid:hover {
@@ -176,6 +180,45 @@
             transition: 0.5s cubic-bezier(0.23, 1, 0.32, 1);
             display: flex;
             flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 24px 40px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-header h2 {
+            color: #1e293b;
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .close-btn {
+            background: #e2e8f0;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #475569;
+            transition: 0.3s;
+        }
+
+        .close-btn:hover {
+            background: #cbd5e1;
+            color: #1e293b;
+            transform: rotate(90deg);
+        }
+
+        .close-btn iconify-icon {
+            font-size: 24px;
         }
 
         .modal-body {
@@ -294,7 +337,7 @@
 
         .feature-card {
             background: var(--card-bg);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(15, 23, 42, 0.05);
             padding: 40px;
             border-radius: 24px;
             backdrop-filter: blur(12px);
@@ -304,12 +347,14 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
         }
 
         .feature-card:hover {
             border-color: var(--primary);
             transform: translateY(-10px);
-            background: rgba(30, 41, 59, 0.9);
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
         }
 
         .feature-card iconify-icon {
@@ -347,7 +392,7 @@
             justify-content: space-around;
             margin-top: 80px;
             padding: 40px;
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(37, 99, 235, 0.03);
             border-radius: 24px;
             flex-wrap: wrap;
             gap: 40px;
@@ -393,15 +438,95 @@
             }
         }
 
-        .stagger-1 { animation-delay: 0.1s; }
-        .stagger-2 { animation-delay: 0.2s; }
-        .stagger-3 { animation-delay: 0.3s; }
-        .stagger-4 { animation-delay: 0.4s; }
+        .stagger-1 {
+            animation-delay: 0.1s;
+        }
 
-        @media (max-width: 640px) {
-            .hero { padding: 40px 15px; }
-            .cta-group { flex-direction: column; width: 100%; }
-            .btn { width: 100%; justify-content: center; }
+        .stagger-2 {
+            animation-delay: 0.2s;
+        }
+
+        .stagger-3 {
+            animation-delay: 0.3s;
+        }
+
+        .stagger-4 {
+            animation-delay: 0.4s;
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                padding: 40px 15px;
+            }
+
+            .cta-group {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            /* Modal Mobile Optimization */
+            .modal-content {
+                height: 95vh;
+                border-radius: 20px;
+            }
+
+            .modal-header {
+                padding: 15px 20px;
+            }
+
+            .modal-header h2 {
+                font-size: 1.2rem;
+            }
+
+            .modal-body {
+                flex-direction: column;
+            }
+
+            .modal-sidebar {
+                width: 100%;
+                height: auto;
+                padding: 10px;
+                flex-direction: row;
+                overflow-x: auto;
+                border-right: none;
+                border-bottom: 1px solid #e2e8f0;
+                gap: 8px;
+                background: #f8fafc;
+                white-space: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .video-tab {
+                padding: 10px 16px;
+                font-size: 0.9rem;
+                flex-shrink: 0;
+            }
+
+            .modal-main {
+                overflow-y: auto;
+            }
+
+            .video-container {
+                height: auto;
+                aspect-ratio: 16/9;
+            }
+
+            .modal-footer {
+                padding: 20px;
+            }
+
+            .modal-footer h4 {
+                font-size: 1.1rem;
+            }
+
+            .modal-footer p {
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
@@ -409,12 +534,12 @@
 <body>
     <section class="hero">
         <img src="omnisignal_hero_luxury_1773506196806.png" class="hero-image" alt="Background">
-        
+
         <div class="container">
             <header class="reveal stagger-1">
                 <h1>OmniSignal</h1>
                 <p class="tagline">智慧場域的數位通訊核心。連結 AI 真人主播、物聯網監測與雲端自動化，重新定義專業廣播體驗。</p>
-                
+
                 <div class="cta-group">
                     <a href="index.html" class="btn btn-primary">
                         <iconify-icon icon="solar:globus-bold-duotone"></iconify-icon>
@@ -484,9 +609,10 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-header">
                 <h2>🎬 OmniSignal 解決方案影音藝廊</h2>
-                <button class="close-btn" onclick="closeIntroModal()"><iconify-icon icon="solar:close-circle-bold"></iconify-icon></button>
+                <button class="close-btn" onclick="closeIntroModal()"><iconify-icon
+                        icon="solar:close-circle-bold"></iconify-icon></button>
             </div>
-            
+
             <div class="modal-body">
                 <nav class="modal-sidebar">
                     <div class="video-tab active" onclick="switchVideo(0)">
@@ -509,8 +635,11 @@
 
                 <main class="modal-main">
                     <div class="video-container">
-                        <video id="introVideo" playsinline muted loop poster="omnisignal_video_thumbnail_1773506611678.png">
-                            <source src="https://assets.mixkit.co/videos/preview/mixkit-top-view-of-a-young-woman-working-on-a-laptop-40073-large.mp4" type="video/mp4">
+                        <video id="introVideo" playsinline muted loop
+                            poster="omnisignal_video_thumbnail_1773506611678.png">
+                            <source
+                                src="https://assets.mixkit.co/videos/preview/mixkit-top-view-of-a-young-woman-working-on-a-laptop-40073-large.mp4"
+                                type="video/mp4">
                         </video>
                         <div class="play-overlay" id="videoPlayOverlay" onclick="toggleIntroContent()">
                             <iconify-icon icon="solar:play-bold"></iconify-icon>
@@ -518,7 +647,8 @@
                     </div>
                     <div class="modal-footer">
                         <h4 id="videoTitle">全域智慧廣播系統</h4>
-                        <p id="videoDesc">本系統整合了頂尖的 AI 數位人技術、工業級物聯網控制與雲端自動化排程。不論是在工廠、辦公室或大型商場，OmniSignal 都能為您提供最穩定、最智慧的通訊解決方案。</p>
+                        <p id="videoDesc">本系統整合了頂尖的 AI 數位人技術、工業級物聯網控制與雲端自動化排程。不論是在工廠、辦公室或大型商場，OmniSignal
+                            都能為您提供最穩定、最智慧的通訊解決方案。</p>
                     </div>
                 </main>
             </div>
@@ -562,22 +692,22 @@
         function switchVideo(idx) {
             currentVideoIdx = idx;
             const data = videoData[idx];
-            
+
             // Stop previous
             if (window.introAudio) {
                 window.introAudio.pause();
                 window.introAudio = null;
             }
-            
+
             const video = document.getElementById('introVideo');
             video.pause();
             video.src = data.video;
             video.poster = data.poster;
             video.load(); // Force reload to show new poster
-            
+
             document.getElementById('videoTitle').innerText = data.title;
             document.getElementById('videoDesc').innerText = data.desc;
-            
+
             const btn = document.getElementById('videoPlayOverlay');
             btn.innerHTML = '<iconify-icon icon="solar:play-bold"></iconify-icon>';
             btn.style.opacity = '1';
@@ -592,7 +722,7 @@
             const playBtn = document.getElementById('videoPlayOverlay');
             const video = document.getElementById('introVideo');
             const data = videoData[currentVideoIdx];
-            
+
             if (window.introAudio && !window.introAudio.paused) {
                 window.introAudio.pause();
                 video.pause();
@@ -604,7 +734,7 @@
             try {
                 if (!window.introAudio) {
                     playBtn.innerHTML = '<iconify-icon icon="line-md:loading-twotone-loop"></iconify-icon>';
-                    
+
                     const response = await fetch('/api/tts_preview', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -623,10 +753,10 @@
 
                 window.introAudio.play();
                 video.play();
-                
+
                 playBtn.innerHTML = '<iconify-icon icon="solar:pause-bold"></iconify-icon>';
                 playBtn.style.opacity = '0.3';
-                
+
                 window.introAudio.onended = () => {
                     playBtn.innerHTML = '<iconify-icon icon="solar:play-bold"></iconify-icon>';
                     playBtn.style.opacity = '1';
@@ -653,9 +783,9 @@
             const modal = document.getElementById('introModal');
             modal.classList.remove('active');
             setTimeout(() => modal.style.display = 'none', 500);
-            
+
             const video = document.getElementById('introVideo');
-            if(video) video.pause();
+            if (video) video.pause();
             if (window.introAudio) {
                 window.introAudio.pause();
                 window.introAudio = null;
