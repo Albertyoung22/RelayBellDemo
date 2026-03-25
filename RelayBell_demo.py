@@ -146,10 +146,31 @@ _BOOT_LOGS = []
 
 
 def _log_boot(msg):
-
     print(msg)
-
     _BOOT_LOGS.append(msg)
+
+# [NEW] Import JsonBlob Helper for Remote Storage
+try:
+    from jsonblob_helper import JsonBlobDB
+    CLOUD_DB = JsonBlobDB()
+    _log_boot(f"[CLOUD] Cloud DB initialized with URL: {CLOUD_DB.url}")
+    
+    # Unified sync function to avoid overwriting sections
+    def sync_cloud_section(section_name, data):
+        def _task():
+            current = CLOUD_DB.pull() or {}
+            current[section_name] = data
+            CLOUD_DB.push(current)
+        threading.Thread(target=_task, daemon=True).start()
+        
+except ImportError:
+    CLOUD_DB = None
+    sync_cloud_section = lambda k, v: None
+    _log_boot("[CLOUD] Warning: jsonblob_helper.py not found. Cloud sync disabled.")
+except Exception as e:
+    CLOUD_DB = None
+    sync_cloud_section = lambda k, v: None
+    _log_boot(f"[CLOUD] Error initializing Cloud DB: {e}")
 
 
 # [AUTO-ENVIRONMENT-SWITCH]
@@ -476,8 +497,33 @@ def _save_chime_config():
             json.dump({"enabled": CHIME_ENABLED}, f)
     except: pass
 
+def _load_voice_config():
+    """從磁碟或雲端載入語音設定"""
+    global voice_rate, voice_volume
+    _v_p = os.path.join(DATA_DIR, "voice_config.json")
+    try:
+        data = None
+        if os.path.exists(_v_p):
+            with open(_v_p, "r") as f:
+                data = json.load(f)
+            print(f"[VOICE] Loaded settings from disk")
+        elif CLOUD_DB:
+            print("[VOICE] Local config missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "voice_config" in cloud_data:
+                data = cloud_data["voice_config"]
+                print(f"[VOICE] Restored settings from cloud")
+                with open(_v_p, "w") as f:
+                    json.dump(data, f)
+        
+        if data:
+            voice_rate = data.get("rate", "+0%")
+            voice_volume = data.get("volume", 100)
+    except Exception as e:
+        print(f"[VOICE] Error loading config: {e}")
+
 def _save_voice_config():
-    """Missing function to save voice settings"""
+    """保存語音設定並同步到雲端"""
     try:
         _v_p = os.path.join(DATA_DIR, "voice_config.json")
         data = {
@@ -486,6 +532,8 @@ def _save_voice_config():
         }
         with open(_v_p, "w") as f:
             json.dump(data, f)
+        # Sync to cloud
+        sync_cloud_section("voice_config", data)
     except: pass
 
 
@@ -2617,24 +2665,32 @@ MIXER_LOCK = threading.RLock()
 
 
 def load_config():
-
     if not os.path.exists(CONFIG_FILE):
-
+        if CLOUD_DB:
+            # [NEW] Cloud Restore for Sound Config
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "sound_config" in cloud_data:
+                data = cloud_data["sound_config"]
+                _log_boot(f"[CLOUD] Restored sound_config from cloud")
+                save_config(data)
+                return data
+        
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-
             json.dump(DEFAULT_CONFIG, f, ensure_ascii=False, indent=2)
 
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-
         return json.load(f)
 
 
 
 def save_config(config):
-
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-
-        json.dump(config, f, ensure_ascii=False, indent=2)
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        # Sync to cloud
+        sync_cloud_section("sound_config", config)
+    except Exception as e:
+        print("Save sound_config error:", e)
 
 
 
@@ -2660,36 +2716,44 @@ BUDDHA_SHORTCUTS_FILE = "buddha_shortcuts.json"
 
 
 def load_shortcuts():
-
     if not os.path.exists(SHORTCUTS_FILE):
-
+        if CLOUD_DB:
+            # [NEW] Cloud Restore for Shortcuts
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "shortcuts" in cloud_data:
+                data = cloud_data["shortcuts"]
+                _log_boot(f"[CLOUD] Restored shortcuts from cloud ({len(data)} items)")
+                save_shortcuts(data) # Sync locally
+                return data
         return []
-
     try:
-
         with open(SHORTCUTS_FILE, "r", encoding="utf-8") as f:
-
             return json.load(f)
-
     except Exception:
-
         return []
 
 
 
 def save_shortcuts(data):
-
     try:
-
         with open(SHORTCUTS_FILE, "w", encoding="utf-8") as f:
-
             json.dump(data, f, ensure_ascii=False, indent=2)
-
+        # Sync to cloud
+        sync_cloud_section("shortcuts", data)
     except Exception as e:
         print("Save shortcuts error:", e)
 
 def load_buddha_shortcuts():
-    if not os.path.exists(BUDDHA_SHORTCUTS_FILE): return []
+    if not os.path.exists(BUDDHA_SHORTCUTS_FILE):
+        if CLOUD_DB:
+            # [NEW] Cloud Restore for Buddha Shortcuts
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "buddha_shortcuts" in cloud_data:
+                data = cloud_data["buddha_shortcuts"]
+                _log_boot(f"[CLOUD] Restored buddha_shortcuts from cloud ({len(data)} items)")
+                save_buddha_shortcuts(data)
+                return data
+        return []
     try:
         with open(BUDDHA_SHORTCUTS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -2699,6 +2763,8 @@ def save_buddha_shortcuts(data):
     try:
         with open(BUDDHA_SHORTCUTS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        # Sync to cloud
+        sync_cloud_section("buddha_shortcuts", data)
     except Exception as e:
         print("Save Buddha shortcuts error:", e)
 
@@ -5572,56 +5638,44 @@ def _load_timetable_from_disk():
     loaded = False
 
     try:
-
         if os.path.isfile(path_json):
-
             with open(path_json, "r", encoding="utf-8") as f:
-
                 raw = json.load(f)
-
             data["enabled"] = bool(raw.get("enabled", True))
-
             data["treat_saturday_as_school"] = bool(raw.get("treat_saturday_as_school", False))
-
             data["skip_holidays"] = bool(raw.get("skip_holidays", True))
-
             data["holidays"] = list(raw.get("holidays", []))
-
             items = raw.get("items", [])
-
             norm_items = []
-
             for it in items:
-
                 it = dict(it)
-
                 if "date" in it:
-
                     norm_items.append({"date": it["date"], "time": it.get("time", "08:00"), "action": it.get("action",""), "label": it.get("label","")})
-
                 else:
-
                     dow = it.get("dow") or it.get("weekday") or it.get("days")
-
                     if isinstance(dow, (list, tuple)):
-
                         for d in dow:
-
                             nd = _norm_dow(d)
-
                             if nd: norm_items.append({"dow": nd, "time": it.get("time","08:00"), "action": it.get("action",""), "label": it.get("label","")})
-
                     else:
-
                         nd = _norm_dow(dow)
-
                         if nd: norm_items.append({"dow": nd, "time": it.get("time","08:00"), "action": it.get("action",""), "label": it.get("label","")})
-
             data["items"] = norm_items
-
             loaded = True
-
-        elif os.path.isfile(path_csv):
+        elif CLOUD_DB:
+            # [NEW] Cloud Restore for Timetable
+            _log_boot("[CLOUD] Timetable local file missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "timetable" in cloud_data:
+                data = cloud_data["timetable"]
+                _log_boot(f"[CLOUD] Restored timetable from cloud ({len(data.get('items',[]))} items)")
+                with open(path_json, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                loaded = True
+            else:
+                _log_boot("[CLOUD] No timetable found in cloud.")
+        
+        if not loaded and os.path.isfile(path_csv):
 
             with open(path_csv, "r", encoding="utf-8") as f:
 
@@ -6828,17 +6882,23 @@ def _load_timetable_from_disk():
     try:
 
         if os.path.exists(TIMETABLE_PATH):
-
             with open(TIMETABLE_PATH, "r", encoding="utf-8") as f:
-
                 timetable_data = json.load(f)
-
-            print(f"[TIMETABLE] Loaded {len(timetable_data.get('items', []))} items")
-
+            print(f"[TIMETABLE] Loaded {len(timetable_data.get('items', []))} items from disk")
+        elif CLOUD_DB:
+            print("[TIMETABLE] Local file missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "timetable" in cloud_data:
+                timetable_data = cloud_data["timetable"]
+                print(f"[TIMETABLE] Restored {len(timetable_data.get('items', []))} items from cloud")
+                # Save restored data locally
+                with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(timetable_data, f, ensure_ascii=False, indent=2)
+            else:
+                print("[TIMETABLE] Cloud restore failed or no data, using defaults")
+                timetable_data = {"enabled": True, "items": []}
         else:
-
-            print(f"[TIMETABLE] File does not exist, using defaults")
-
+            print(f"[TIMETABLE] File does not exist and no cloud DB, using defaults")
             timetable_data = {"enabled": True, "items": []}
 
         timetable_enabled = bool(timetable_data.get("enabled", True))
@@ -7367,29 +7427,26 @@ def load_users_config():
     try:
 
         if os.path.exists(USERS_CONFIG_PATH):
-
             with open(USERS_CONFIG_PATH, "r", encoding="utf-8") as f:
-
                 return json.load(f)
-
+        elif CLOUD_DB:
+            print("[AUTH] Local users_config.json missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "users_config" in cloud_data:
+                config = cloud_data["users_config"]
+                print(f"[AUTH] Restored users_config from cloud")
+                save_users_config(config) # Save locally
+                return config
+            else:
+                print("[AUTH] Cloud restore failed, using default config")
+                # (Existing default config logic below...)
+                default_config = {"users": [], "group_passwords": {str(i): "" for i in range(1, 7)}, "session_timeout_minutes": 120, "require_student_login": False}
+                save_users_config(default_config)
+                return default_config
         else:
-
-            # 創建默認配置
-
-            default_config = {
-
-                "users": [],
-
-                "group_passwords": {str(i): "" for i in range(1, 7)},
-
-                "session_timeout_minutes": 120,
-
-                "require_student_login": False
-
-            }
-
+            # (Original default)
+            default_config = {"users": [], "group_passwords": {str(i): "" for i in range(1, 7)}, "session_timeout_minutes": 120, "require_student_login": False}
             save_users_config(default_config)
-
             return default_config
 
     except Exception as e:
@@ -7417,8 +7474,9 @@ def save_users_config(config):
     try:
 
         with open(USERS_CONFIG_PATH, "w", encoding="utf-8") as f:
-
             json.dump(config, f, ensure_ascii=False, indent=4)
+        # Sync to cloud
+        sync_cloud_section("users_config", config)
 
     except Exception as e:
 
@@ -9483,79 +9541,65 @@ def _load_cwa_conf():
     global CWA_API_KEY, CWA_ENABLED, CWA_POLL_SEC, CWA_BROADCAST_ENABLED, CWA_LOCAL_CITY, CWA_INTENSITY_THRESHOLD
 
     try:
-
         if os.path.exists(CWA_CONF_FILE):
-
             with open(CWA_CONF_FILE, "r", encoding="utf-8") as f:
-
                 d = json.load(f)
+        elif CLOUD_DB:
+            # [NEW] Cloud Restore for CWA Config
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "cwa_config" in cloud_data:
+                d = cloud_data["cwa_config"]
+                _log_boot(f"[CLOUD] Restored cwa_config from cloud")
+                # Save locally for next time
+                with open(CWA_CONF_FILE, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=2)
+            else: d = {}
+        else: d = {}
 
-                k = d.get("key", "").strip()
-
-                if k and len(k) > 30:
-
-                    CWA_API_KEY = k
-
-                if "enabled" in d:
-
-                    CWA_ENABLED = bool(d["enabled"])
-
-                else:
-
-                    CWA_ENABLED = True
-
-                
-
-                CWA_BROADCAST_ENABLED = bool(d.get("broadcast_enabled", True))
-
-                CWA_POLL_SEC = max(15, int(d.get("poll_sec", 60)))
-
-                CWA_LOCAL_CITY = d.get("local_city", "")
-
-                CWA_INTENSITY_THRESHOLD = d.get("intensity_threshold", "3")
-                
-                global CWA_TCP_ACCOUNT, CWA_TCP_PASSWORD
-                CWA_TCP_ACCOUNT = d.get("tcp_account", CWA_TCP_ACCOUNT)
-                CWA_TCP_PASSWORD = d.get("tcp_password", CWA_TCP_PASSWORD)
+        if d:
+            k = d.get("key", "").strip()
+            if k and len(k) > 30:
+                CWA_API_KEY = k
+            if "enabled" in d:
+                CWA_ENABLED = bool(d["enabled"])
+            else:
+                CWA_ENABLED = True
+            
+            CWA_BROADCAST_ENABLED = bool(d.get("broadcast_enabled", True))
+            CWA_POLL_SEC = max(15, int(d.get("poll_sec", 60)))
+            CWA_LOCAL_CITY = d.get("local_city", "")
+            CWA_INTENSITY_THRESHOLD = d.get("intensity_threshold", "3")
+            
+            global CWA_TCP_ACCOUNT, CWA_TCP_PASSWORD
+            CWA_TCP_ACCOUNT = d.get("tcp_account", CWA_TCP_ACCOUNT)
+            CWA_TCP_PASSWORD = d.get("tcp_password", CWA_TCP_PASSWORD)
 
         # After loading config, try loading license override if city or credentials missing
         if not CWA_LOCAL_CITY or not CWA_TCP_ACCOUNT:
             _try_load_cwa_license()
 
-
     except: pass
 
 
 
-def _save_cwa_conf():
-
     with CWA_LOCK:
-
         try:
-
+            data = {
+                "key": CWA_API_KEY, 
+                "enabled": CWA_ENABLED, 
+                "poll_sec": CWA_POLL_SEC, 
+                "broadcast_enabled": CWA_BROADCAST_ENABLED,
+                "local_city": CWA_LOCAL_CITY,
+                "intensity_threshold": CWA_INTENSITY_THRESHOLD,
+                "tcp_account": CWA_TCP_ACCOUNT,
+                "tcp_password": CWA_TCP_PASSWORD
+            }
             with open(CWA_CONF_FILE, "w", encoding="utf-8") as f:
-
-                json.dump({
-
-                    "key": CWA_API_KEY, 
-
-                    "enabled": CWA_ENABLED, 
-
-                    "poll_sec": CWA_POLL_SEC, 
-
-                    "broadcast_enabled": CWA_BROADCAST_ENABLED,
-
-                    "local_city": CWA_LOCAL_CITY,
-
-                    "intensity_threshold": CWA_INTENSITY_THRESHOLD,
-
-                    "tcp_account": CWA_TCP_ACCOUNT,
-
-                    "tcp_password": CWA_TCP_PASSWORD
-
-                }, f)
-
-        except: pass
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # Sync to cloud
+            sync_cloud_section("cwa_config", data)
+        except Exception as e:
+            print(f"Save CWA config error: {e}")
 
 
 
@@ -11551,16 +11595,11 @@ def api_timetable_enable():
         timetable_enabled = enabled
 
         timetable_data["enabled"] = enabled
-
-
-
         # Save to disk
-
         with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
-
             json.dump(timetable_data, f, ensure_ascii=False, indent=2)
-
-
+        # Sync to cloud
+        sync_cloud_section("timetable", timetable_data)
 
         STATE["timetable"]["enabled"] = enabled
 
@@ -11613,15 +11652,14 @@ def api_timetable_set():
     if not ok: return jsonify(ok=False, error=err), 400
 
     with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
-
         json.dump(payload, f, ensure_ascii=False, indent=2)
-
     _load_timetable_from_disk()
+    
+    # Sync to cloud
+    sync_cloud_section("timetable", payload)
 
     try: text_area_insert(f"已覆寫課表：{len(timetable_data.get('items', []))} 筆（enabled={timetable_enabled}）")
-
     except Exception: pass
-
     return jsonify(ok=True, count=len(timetable_data.get("items", [])), enabled=bool(timetable_data.get("enabled", True)))
 
 
@@ -11651,10 +11689,11 @@ def api_timetable_merge():
     if not ok: return jsonify(ok=False, error=err), 400
 
     with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
-
         json.dump(new, f, ensure_ascii=False, indent=2)
-
     _load_timetable_from_disk()
+
+    # Sync to cloud
+    sync_cloud_section("timetable", new)
 
     return jsonify(ok=True, count=len(timetable_data.get("items", [])), enabled=bool(timetable_data.get("enabled", True)))
 
@@ -15868,6 +15907,7 @@ threading.Thread(target=keep_render_alive, daemon=True).start()
 
 try:
     if '_load_timetable_from_disk' in globals(): _load_timetable_from_disk()
+    if '_load_voice_config' in globals(): _load_voice_config()
     def _init_lists_once():
         try:
             if 'refresh_timetable_tree' in globals(): refresh_timetable_tree()
