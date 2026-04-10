@@ -1,7 +1,8 @@
 pyserial
 flask
 flask-sock
-pygame==2.5.2
+# pygame removed for Render compatibility (no sound device/compilation issues)
+
 yt-dlp
 edge-tts
 requests
