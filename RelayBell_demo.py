@@ -650,13 +650,18 @@ except ImportError:
 
 
 
+_WEATHER_CACHE = {"text": None, "ts": 0.0}
+
 def _get_server_location():
 
     """Detect server location (lat, lon, city, region) via IP APIs."""
 
     # Default: Taipei 101
-
     res = {"lat": 25.0330, "lon": 121.5654, "city": "台北市", "region": "Taipei City"}
+
+    # On Render / cloud hosting, IP geolocation resolves to the cloud datacenter (e.g. US/SG)
+    if os.environ.get("RENDER") or os.environ.get("RENDER_EXTERNAL_URL"):
+        return res
 
     
 
@@ -726,111 +731,89 @@ def _get_server_location():
 
 def _get_weather_report():
 
+    now_ts = time.time()
+    if _WEATHER_CACHE["text"] and (now_ts - _WEATHER_CACHE["ts"] < 300):
+        return _WEATHER_CACHE["text"]
+
     loc = _get_server_location()
-
     lat = loc["lat"]
-
     lon = loc["lon"]
-
     # Prefer City, then Region
-
     loc_name = loc["city"] or loc["region"] or "台北市"
+    headers = {"User-Agent": "RelayBell/1.0"}
+    now_str = datetime.now().strftime("%H點%M分")
 
-
-
+    # 1. Primary: Open-Meteo API
     try:
-
-        # Open-Meteo API
-
         url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto"
+        r = requests.get(url, headers=headers, timeout=8)
+        if r.status_code == 200:
+            data = r.json().get("current", {})
+            temp = data.get("temperature_2m", "?")
+            humid = data.get("relative_humidity_2m", "?")
+            code = data.get("weather_code", 0)
 
-        r = requests.get(url, timeout=5)
+            status = "晴朗"
+            if code in (1, 2, 3): status = "多雲"
+            elif code in (45, 48): status = "有霧"
+            elif 51 <= code <= 55: status = "毛毛雨"
+            elif 56 <= code <= 57: status = "凍雨"
+            elif 61 <= code <= 65: status = "下雨"
+            elif 66 <= code <= 67: status = "冰雨"
+            elif 71 <= code <= 77: status = "下雪"
+            elif 80 <= code <= 82: status = "陣雨"
+            elif 85 <= code <= 86: status = "陣雪"
+            elif code >= 95: status = "雷雨"
 
-        if r.status_code != 200: return "無法取得氣象資料"
+            aqi_str = ""
+            try:
+                aq_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=us_aqi"
+                aq_r = requests.get(aq_url, headers=headers, timeout=4)
+                if aq_r.status_code == 200:
+                    aq_data = aq_r.json().get("current", {})
+                    aqi = aq_data.get("us_aqi")
+                    if aqi is not None:
+                        if aqi <= 50: q_status = "良好"
+                        elif aqi <= 100: q_status = "普通"
+                        elif aqi <= 150: q_status = "對敏感族群不健康"
+                        elif aqi <= 200: q_status = "不健康"
+                        elif aqi <= 300: q_status = "非常不健康"
+                        else: q_status = "危害"
+                        aqi_str = f"，空氣品質{q_status}，AQI指數{aqi}"
+            except Exception as e:
+                print(f"[Weather] AQI fetch failed: {e}")
 
-        data = r.json().get("current", {})
-
-        temp = data.get("temperature_2m", "?")
-
-        humid = data.get("relative_humidity_2m", "?")
-
-        code = data.get("weather_code", 0)
-
-        
-
-        # WMO Weather interpretation
-
-        status = "晴朗"
-
-        if code in (1, 2, 3): status = "多雲"
-
-        elif code in (45, 48): status = "有霧"
-
-        elif 51 <= code <= 55: status = "毛毛雨"
-
-        elif 56 <= code <= 57: status = "凍雨"
-
-        elif 61 <= code <= 65: status = "下雨"
-
-        elif 66 <= code <= 67: status = "冰雨"
-
-        elif 71 <= code <= 77: status = "下雪"
-
-        elif 80 <= code <= 82: status = "陣雨"
-
-        elif 85 <= code <= 86: status = "陣雪"
-
-        elif code >= 95: status = "雷雨"
-
-
-
-        # Air Quality Check
-
-        aqi_str = ""
-
-        try:
-
-            aq_url = f"https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=us_aqi"
-
-            aq_r = requests.get(aq_url, timeout=3)
-
-            if aq_r.status_code == 200:
-
-                aq_data = aq_r.json().get("current", {})
-
-                aqi = aq_data.get("us_aqi")
-
-                if aqi is not None:
-
-                    if aqi <= 50: q_status = "良好"
-
-                    elif aqi <= 100: q_status = "普通"
-
-                    elif aqi <= 150: q_status = "對敏感族群不健康"
-
-                    elif aqi <= 200: q_status = "不健康"
-
-                    elif aqi <= 300: q_status = "非常不健康"
-
-                    else: q_status = "危害"
-
-                    aqi_str = f"，空氣品質{q_status}，AQI指數{aqi}"
-
-        except Exception as e:
-
-            print(f"[Weather] AQI fetch failed: {e}")
-
-        
-
-        now_str = datetime.now().strftime("%H點%M分")
-
-        return f"現在時間 {now_str}，所在位置 {loc_name}，目前氣溫 {temp} 度，相對濕度 {humid}%，天氣狀況：{status}{aqi_str}。"
-
+            report = f"現在時間 {now_str}，所在位置 {loc_name}，目前氣溫 {temp} 度，相對濕度 {humid}%，天氣狀況：{status}{aqi_str}。"
+            _WEATHER_CACHE["text"] = report
+            _WEATHER_CACHE["ts"] = now_ts
+            return report
+        else:
+            print(f"[Weather] Open-Meteo HTTP {r.status_code}")
     except Exception as e:
+        print(f"[Weather] Open-Meteo error: {e}")
 
-        print("Weather error:", e)
+    # 2. Fallback: wttr.in JSON API
+    try:
+        wttr_url = f"https://wttr.in/{lat},{lon}?format=j1&lang=zh-tw"
+        wr = requests.get(wttr_url, headers=headers, timeout=8)
+        if wr.status_code == 200:
+            cur = (wr.json().get("current_condition") or [{}])[0]
+            temp = cur.get("temp_C", "?")
+            humid = cur.get("humidity", "?")
+            desc_list = cur.get("lang_zh-tw") or cur.get("weatherDesc") or [{}]
+            status = (desc_list[0].get("value") if desc_list else None) or "晴朗"
+            report = f"現在時間 {now_str}，所在位置 {loc_name}，目前氣溫 {temp} 度，相對濕度 {humid}%，天氣狀況：{status}。"
+            _WEATHER_CACHE["text"] = report
+            _WEATHER_CACHE["ts"] = now_ts
+            return report
+        else:
+            print(f"[Weather] wttr.in HTTP {wr.status_code}")
+    except Exception as e:
+        print(f"[Weather] wttr.in error: {e}")
 
-        return "氣象資料讀取失敗"
+    if _WEATHER_CACHE["text"]:
+        return _WEATHER_CACHE["text"]
+    return "無法取得氣象資料"
 
 
 
@@ -1258,8 +1241,8 @@ def api_tts_preview():
             
         voice = get_voice_id_auto(text, lang_code=lang, gender_code=gender)
         
-        async def _gen():
-            tts = edge_tts.Communicate(text, voice, rate=rate_str)
+        async def _gen(v, r):
+            tts = edge_tts.Communicate(text, v, rate=r)
             out = io.BytesIO()
             async for chunk in tts.stream():
                 if chunk["type"] == "audio":
@@ -1267,11 +1250,28 @@ def api_tts_preview():
             out.seek(0)
             return out
 
-        # Run async generation in a fresh loop for this thread
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        audio_io = loop.run_until_complete(_gen())
-        loop.close()
+        audio_io = None
+        for v_try, r_try in [(voice, rate_str), (voice, "+0%"), ("zh-TW-HsiaoChenNeural", "+0%")]:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    cand = loop.run_until_complete(_gen(v_try, r_try))
+                finally:
+                    loop.close()
+                if cand and cand.getbuffer().nbytes > 0:
+                    audio_io = cand
+                    break
+            except Exception as e_edge:
+                print(f"[TTS_PREVIEW] EdgeTTS attempt ({v_try}, {r_try}) failed: {e_edge}")
+
+        if audio_io is None:
+            # Fallback to gTTS (e.g. when cloud datacenter IP is blocked by Microsoft)
+            gtts_map = {"zh-TW": "zh-tw", "zh-CN": "zh-cn", "en-US": "en", "en-GB": "en", "ja-JP": "ja", "ko-KR": "ko", "vi-VN": "vi", "id-ID": "id"}
+            t_lang = gtts_map.get(lang, "zh-tw")
+            audio_io = io.BytesIO()
+            gTTS(text, lang=t_lang).write_to_fp(audio_io)
+            audio_io.seek(0)
         
         return send_file(audio_io, mimetype="audio/mpeg", as_attachment=False, download_name="preview.mp3")
 
@@ -13312,11 +13312,168 @@ THEME = {
 }
 
 # ====================================================
+# ====================================================
+# == [AUTO-UPDATE & AUTO-REPAIR] Edge TTS 管理引擎 ==
+# ====================================================
+def _test_edge_tts_probe():
+    """測試微軟 Edge TTS 是否能正常產出音訊"""
+    import edge_tts, asyncio, os, tempfile
+    async def _test():
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            test_cases = [
+                ("廣播系統連線測試", "zh-TW-HsiaoChenNeural"),
+                ("測試", "zh-TW-YunJheNeural"),
+                ("Testing broadcast system", "en-US-EmmaMultilingualNeural"),
+            ]
+            for t_text, t_voice in test_cases:
+                try:
+                    c = edge_tts.Communicate(t_text, t_voice)
+                    await c.save(tmp_path)
+                    if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                        return True
+                except Exception:
+                    continue
+            return False
+        finally:
+            try: os.remove(tmp_path)
+            except: pass
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_test())
+    finally:
+        loop.close()
+
+def auto_upgrade_edge_tts(force=False, notify=True):
+    """全自動檢查並升級 edge-tts 套件，升級後自動熱重載 (Hot-Reload) 記憶體模組"""
+    if getattr(sys, "frozen", False):
+        return False, "打包環境 (EXE) 無法執行 pip 更新"
+
+    try:
+        import json, urllib.request, importlib
+        import edge_tts
+
+        cur_ver = getattr(edge_tts, "__version__", "0.0.0")
+        latest_ver = None
+
+        try:
+            req = urllib.request.Request("https://pypi.org/pypi/edge-tts/json", headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    latest_ver = data.get("info", {}).get("version")
+        except Exception as e_pypi:
+            if notify: print(f"[Auto-Update] PyPI 版本查詢略過 ({e_pypi})")
+
+        need_upgrade = force
+        if latest_ver and latest_ver != cur_ver:
+            need_upgrade = True
+
+        if not need_upgrade:
+            if _test_edge_tts_probe():
+                STATE["edge_tts_status"] = "OK"
+                STATE["edge_tts_fails"] = 0
+                return True, f"目前已是最新版本 ({cur_ver}) 且運作正常"
+
+        if notify: print(f"[Auto-Update] 正在調用本機 Python 自動升級 edge-tts (目前: {cur_ver}, 最新: {latest_ver or '最新'})...")
+        STATE["edge_tts_status"] = "Updating..."
+
+        _base_py = os.path.join(getattr(sys, "base_prefix", sys.prefix), "python.exe")
+        _py_exe = _base_py if os.path.isfile(_base_py) else sys.executable
+
+        cmd = [_py_exe, "-m", "pip", "install", "--upgrade", "edge-tts"]
+        subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        try:
+            import edge_tts.constants
+            import edge_tts.communicate
+            importlib.reload(edge_tts.constants)
+            importlib.reload(edge_tts.communicate)
+            importlib.reload(edge_tts)
+        except Exception as e_rel:
+            if notify: print(f"[Auto-Update] 模組熱重載備註: {e_rel}")
+
+        if _test_edge_tts_probe():
+            new_v = getattr(edge_tts, "__version__", cur_ver)
+            STATE["edge_tts_status"] = "OK"
+            STATE["edge_tts_fails"] = 0
+            msg = f"Edge TTS 已成功自動升級並熱載入！(版本: {new_v})"
+            if notify: print(f">>> [Auto-Update] ✅ {msg}")
+            try: text_area_insert(f"✅ [Auto-Update] {msg}", "TTS")
+            except: pass
+            return True, msg
+        else:
+            STATE["edge_tts_status"] = "OK (Updated)"
+            return True, "已升級套件"
+    except Exception as e:
+        err_msg = f"自動升級失敗: {e}"
+        if notify: print(f"[Auto-Update] ⚠️ {err_msg}")
+        STATE["edge_tts_status"] = "Fix Failed"
+        return False, err_msg
+
+def _check_and_repair_edge_tts():
+    try:
+        print(">>> [Self-Check] 正在檢查 Edge TTS 引擎連線...")
+        STATE["edge_tts_status"] = "Testing..."
+
+        if _test_edge_tts_probe():
+            print(">>> [Self-Check] Edge TTS 運作正常 (OK)")
+            STATE["edge_tts_status"] = "OK"
+            STATE["edge_tts_fails"] = 0
+            return
+
+        print(">>> [Self-Check] Edge TTS 測試異常，嘗試熱修復協議...")
+        try:
+            import edge_tts.constants
+            import edge_tts.communicate
+            cur_ver = str(getattr(edge_tts.constants, "SEC_MS_GEC_VERSION", "1-143.0.3650.75"))
+            if cur_ver.startswith("1-"):
+                new_ver = cur_ver.replace("1-", "2-", 1)
+            else:
+                new_ver = "2-143.0.3650.75"
+            edge_tts.constants.SEC_MS_GEC_VERSION = new_ver
+            edge_tts.communicate.SEC_MS_GEC_VERSION = new_ver
+            if _test_edge_tts_probe():
+                print(f">>> [Self-Check] ✅ Edge TTS 協定版本熱修復成功！(已切換為 {new_ver})")
+                STATE["edge_tts_status"] = "OK"
+                STATE["edge_tts_fails"] = 0
+                return
+        except Exception:
+            pass
+
+        auto_upgrade_edge_tts(force=True, notify=True)
+
+    except Exception as e:
+        print(f">>> [Self-Check] Edge TTS 自檢異常: {e}")
+        STATE["edge_tts_status"] = f"Error: {str(e)[:15]}"
+
+def _edge_tts_background_daemon():
+    """背景定時維護執行緒：開機 15 秒後檢查一次，之後每 24 小時定時巡檢更新"""
+    time.sleep(15)
+    while True:
+        try:
+            ok = _test_edge_tts_probe()
+            if not ok:
+                print(">>> [EdgeTTS-Daemon] 巡檢查出 Edge TTS 連線異常，啟動全自動修復升級...")
+                auto_upgrade_edge_tts(force=True, notify=True)
+            else:
+                STATE["edge_tts_status"] = "OK"
+                STATE["edge_tts_fails"] = 0
+        except Exception:
+            pass
+        time.sleep(86400)
+
+# ====================================================
 # == [ANCHOR] HEADLESS MODE (Render / 無桌面環境) ==
 # ====================================================
 if not _HAS_TKINTER:
     # 無 tkinter：直接啟動所有後台服務並阻塞（不建構 GUI）
     print("[HEADLESS] No tkinter – starting web-only mode")
+
+    threading.Thread(target=_check_and_repair_edge_tts, daemon=True).start()
+    threading.Thread(target=_edge_tts_background_daemon, daemon=True).start()
 
     # 定義一個空的 root 替代物（除了 after() 之外幾乎都不需要）
     class _FakeRoot:
@@ -15953,166 +16110,7 @@ try:
     if '_auto_watch_schedules' in globals(): root.after(30000, _auto_watch_schedules)
     if '_apply_button_hover' in globals(): root.after(400, lambda: _apply_button_hover(root))
 
-    # ====================================================
-    # == [AUTO-UPDATE & AUTO-REPAIR] Edge TTS 管理引擎 ==
-    # ====================================================
-    def _test_edge_tts_probe():
-        """測試微軟 Edge TTS 是否能正常產出音訊"""
-        import edge_tts, asyncio, os, tempfile
-        async def _test():
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                tmp_path = tmp.name
-            try:
-                # 使用繁體中文文字搭配台灣微軟神經語音（避免英文字搭配中文語音時遭微軟伺服器回傳 No audio received 拒收）
-                test_cases = [
-                    ("廣播系統連線測試", "zh-TW-HsiaoChenNeural"),
-                    ("測試", "zh-TW-YunJheNeural"),
-                    ("Testing broadcast system", "en-US-EmmaMultilingualNeural"),
-                ]
-                for t_text, t_voice in test_cases:
-                    try:
-                        c = edge_tts.Communicate(t_text, t_voice)
-                        await c.save(tmp_path)
-                        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                            return True
-                    except Exception:
-                        continue
-                return False
-            finally:
-                try: os.remove(tmp_path)
-                except: pass
-        
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(_test())
-        finally:
-            loop.close()
-
-    def auto_upgrade_edge_tts(force=False, notify=True):
-        """全自動檢查並升級 edge-tts 套件，升級後自動熱重載 (Hot-Reload) 記憶體模組"""
-        if getattr(sys, "frozen", False):
-            return False, "打包環境 (EXE) 無法執行 pip 更新"
-
-        try:
-            import json, urllib.request, importlib
-            import edge_tts
-
-            cur_ver = getattr(edge_tts, "__version__", "0.0.0")
-            latest_ver = None
-
-            # 1. 查詢 PyPI 最新版本 (超時 4 秒，不卡頓)
-            try:
-                req = urllib.request.Request("https://pypi.org/pypi/edge-tts/json", headers={"User-Agent": "Mozilla/5.0"})
-                with urllib.request.urlopen(req, timeout=4) as resp:
-                    if resp.status == 200:
-                        data = json.loads(resp.read().decode("utf-8"))
-                        latest_ver = data.get("info", {}).get("version")
-            except Exception as e_pypi:
-                if notify: print(f"[Auto-Update] PyPI 版本查詢略過 ({e_pypi})")
-
-            need_upgrade = force
-            if latest_ver and latest_ver != cur_ver:
-                need_upgrade = True
-
-            if not need_upgrade:
-                if _test_edge_tts_probe():
-                    STATE["edge_tts_status"] = "OK"
-                    STATE["edge_tts_fails"] = 0
-                    return True, f"目前已是最新版本 ({cur_ver}) 且運作正常"
-
-            if notify: print(f"[Auto-Update] 正在調用本機 Python 自動升級 edge-tts (目前: {cur_ver}, 最新: {latest_ver or '最新'})...")
-            STATE["edge_tts_status"] = "Updating..."
-
-            _base_py = os.path.join(getattr(sys, "base_prefix", sys.prefix), "python.exe")
-            _py_exe = _base_py if os.path.isfile(_base_py) else sys.executable
-
-            cmd = [_py_exe, "-m", "pip", "install", "--upgrade", "edge-tts"]
-            subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-            # 2. 熱重載 (Hot-Reload) 模組，無需重啟程式立即生效
-            try:
-                import edge_tts.constants
-                import edge_tts.communicate
-                importlib.reload(edge_tts.constants)
-                importlib.reload(edge_tts.communicate)
-                importlib.reload(edge_tts)
-            except Exception as e_rel:
-                if notify: print(f"[Auto-Update] 模組熱重載備註: {e_rel}")
-
-            # 3. 升級後重新探測
-            if _test_edge_tts_probe():
-                new_v = getattr(edge_tts, "__version__", cur_ver)
-                STATE["edge_tts_status"] = "OK"
-                STATE["edge_tts_fails"] = 0
-                msg = f"Edge TTS 已成功自動升級並熱載入！(版本: {new_v})"
-                if notify: print(f">>> [Auto-Update] ✅ {msg}")
-                try: text_area_insert(f"✅ [Auto-Update] {msg}", "TTS")
-                except: pass
-                return True, msg
-            else:
-                STATE["edge_tts_status"] = "OK (Updated)"
-                return True, "已升級套件"
-        except Exception as e:
-            err_msg = f"自動升級失敗: {e}"
-            if notify: print(f"[Auto-Update] ⚠️ {err_msg}")
-            STATE["edge_tts_status"] = "Fix Failed"
-            return False, err_msg
-
-    def _check_and_repair_edge_tts():
-        try:
-            print(">>> [Self-Check] 正在檢查 Edge TTS 引擎連線...")
-            STATE["edge_tts_status"] = "Testing..."
-            
-            if _test_edge_tts_probe():
-                print(">>> [Self-Check] Edge TTS 運作正常 (OK)")
-                STATE["edge_tts_status"] = "OK"
-                STATE["edge_tts_fails"] = 0
-                return
-
-            print(">>> [Self-Check] Edge TTS 測試異常，嘗試熱修復協議...")
-            # 嘗試熱修復 Sec-MS-GEC-Version (1- -> 2-)
-            try:
-                import edge_tts.constants
-                import edge_tts.communicate
-                cur_ver = str(getattr(edge_tts.constants, "SEC_MS_GEC_VERSION", "1-143.0.3650.75"))
-                if cur_ver.startswith("1-"):
-                    new_ver = cur_ver.replace("1-", "2-", 1)
-                else:
-                    new_ver = "2-143.0.3650.75"
-                edge_tts.constants.SEC_MS_GEC_VERSION = new_ver
-                edge_tts.communicate.SEC_MS_GEC_VERSION = new_ver
-                if _test_edge_tts_probe():
-                    print(f">>> [Self-Check] ✅ Edge TTS 協定版本熱修復成功！(已切換為 {new_ver})")
-                    STATE["edge_tts_status"] = "OK"
-                    STATE["edge_tts_fails"] = 0
-                    return
-            except Exception:
-                pass
-
-            # 若仍未通過，自動在背景觸發升級
-            auto_upgrade_edge_tts(force=True, notify=True)
-
-        except Exception as e:
-            print(f">>> [Self-Check] Edge TTS 自檢異常: {e}")
-            STATE["edge_tts_status"] = f"Error: {str(e)[:15]}"
-
-    def _edge_tts_background_daemon():
-        """背景定時維護執行緒：開機 15 秒後檢查一次，之後每 24 小時定時巡檢更新"""
-        time.sleep(15)
-        while True:
-            try:
-                ok = _test_edge_tts_probe()
-                if not ok:
-                    print(">>> [EdgeTTS-Daemon] 巡檢查出 Edge TTS 連線異常，啟動全自動修復升級...")
-                    auto_upgrade_edge_tts(force=True, notify=True)
-                else:
-                    STATE["edge_tts_status"] = "OK"
-                    STATE["edge_tts_fails"] = 0
-            except Exception:
-                pass
-            time.sleep(86400)
-
-    # 啟動自檢與背景定期自動維護緒
+    # 啟動 Edge TTS 自檢與背景定期自動維護緒（函式已於模組層級定義）
     threading.Thread(target=_check_and_repair_edge_tts, daemon=True).start()
     threading.Thread(target=_edge_tts_background_daemon, daemon=True).start()
 

@@ -4,7 +4,7 @@ flask-sock
 # pygame removed for Render compatibility (no sound device/compilation issues)
 
 yt-dlp
-edge-tts
+edge-tts>=7.3.1
 requests
 certifi
 qrcode
