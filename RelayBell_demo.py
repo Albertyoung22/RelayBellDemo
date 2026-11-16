@@ -112,14 +112,7 @@ import ssl
 import time
 import json
 import threading
-from datetime import datetime, timedelta, timezone
-
-# [Timezone] Define Taiwan timezone (UTC+8) globally
-TAIWAN_TZ = timezone(timedelta(hours=8))
-
-def get_now():
-    """Returns the current datetime in Taiwan timezone (UTC+8)."""
-    return datetime.now(TAIWAN_TZ)
+from datetime import datetime, timedelta
 
 # ==========================================================
 #  快速指令 -> 本機音檔映射表 (直接播放,不走 audio_proxy)
@@ -212,7 +205,7 @@ def _global_excepthook(exc_type, exc_value, exc_traceback):
         import traceback
         err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         with open("startup_crash.log", "w", encoding="utf-8") as f:
-            f.write(f"Timestamp: {get_now()}\n")
+            f.write(f"Timestamp: {datetime.now()}\n")
             f.write("Global Crash:\n")
             f.write(err_msg)
     except: pass
@@ -467,6 +460,16 @@ print("========================================")
 import yt_dlp
 
 import edge_tts
+try:
+    import edge_tts.constants
+    import edge_tts.communicate
+    if hasattr(edge_tts.constants, "SEC_MS_GEC_VERSION") and str(edge_tts.constants.SEC_MS_GEC_VERSION).startswith("1-"):
+        _new_sec_ver = str(edge_tts.constants.SEC_MS_GEC_VERSION).replace("1-", "2-", 1)
+        edge_tts.constants.SEC_MS_GEC_VERSION = _new_sec_ver
+        edge_tts.communicate.SEC_MS_GEC_VERSION = _new_sec_ver
+        print(f"[SETUP] 🛠️ [EdgeTTS-Patch] 自動升級微軟協議權杖版本為: {_new_sec_ver}")
+except Exception as _patch_err:
+    pass
 
 from flask import Flask, request, send_from_directory, jsonify, abort, redirect, send_file, render_template, render_template_string, url_for, session, make_response
 
@@ -819,7 +822,7 @@ def _get_weather_report():
 
         
 
-        now_str = get_now().strftime("%H點%M分")
+        now_str = datetime.now().strftime("%H點%M分")
 
         return f"現在時間 {now_str}，所在位置 {loc_name}，目前氣溫 {temp} 度，相對濕度 {humid}%，天氣狀況：{status}{aqi_str}。"
 
@@ -1130,6 +1133,24 @@ sock = Sock(app)
 def api_ping():
     """Simple health check endpoint for Render keep-alive."""
     return "ok"
+
+@app.route('/api/edge_tts/status')
+def api_edge_tts_status():
+    import edge_tts
+    return jsonify(
+        ok=True,
+        version=getattr(edge_tts, "__version__", "unknown"),
+        status=STATE.get("edge_tts_status", "unknown"),
+        fails=STATE.get("edge_tts_fails", 0)
+    )
+
+@app.route('/api/edge_tts/upgrade', methods=['POST'])
+def api_edge_tts_upgrade():
+    def _run():
+        if "auto_upgrade_edge_tts" in globals():
+            auto_upgrade_edge_tts(force=True, notify=True)
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify(ok=True, message="已在背景啟動 Edge TTS 自動升級與熱重載程序")
 
 
 app.secret_key = secrets.token_hex(16)
@@ -2247,7 +2268,7 @@ def api_speak_audio_blob():
 
         # Save metadata so it appears in file list
 
-        _write_upload_meta(save_path, "錄音-" + get_now().strftime("%H%M%S"), fname, "audio")
+        _write_upload_meta(save_path, "錄音-" + datetime.now().strftime("%H%M%S"), fname, "audio")
 
 
 
@@ -2549,7 +2570,7 @@ def text_area_insert(msg: str, src: str | None = None):
 
         origin = (src or getattr(_sender_ctx, "name", None) or "System")
 
-        line = f"{get_now().strftime('%H:%M:%S')}  [{origin}] {msg}\n"
+        line = f"{datetime.now().strftime('%H:%M:%S')}  [{origin}] {msg}\n"
 
         if ta and ta.winfo_exists():
 
@@ -3465,16 +3486,14 @@ def relay_acquire(tag: str = "") -> bool:
 def relay_release(tag: str = ""):
     global RELAY_ACTIVE_CNT
     import datetime as _dt
-    # Use global get_now for timezone consistency
-    def _now_str(): return get_now().strftime('%H:%M:%S.%f')[:-3]
     with RELAY_ACTIVE_LOCK:
         RELAY_ACTIVE_CNT = max(0, RELAY_ACTIVE_CNT - 1)
         if RELAY_ACTIVE_CNT > 0:
-            print(f"[RELY] [{_now_str()}] relay_release({tag}): cnt={RELAY_ACTIVE_CNT}, still held")
+            print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] relay_release({tag}): cnt={RELAY_ACTIVE_CNT}, still held")
             return
 
     # We reached 0. 
-    print(f"[RELY] [{_now_str()}] relay_release({tag}): cnt=0, will OFF after {RELAY_OFF_DELAY}s")
+    print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] relay_release({tag}): cnt=0, will OFF after {RELAY_OFF_DELAY}s")
     if not RELAY_AUTO_ON:
         _diag(f"[Relay] release({tag}) but Auto-On disabled. Skipping OFF.")
         return
@@ -3486,7 +3505,7 @@ def relay_release(tag: str = ""):
     # Final check if it's still 0
     with RELAY_ACTIVE_LOCK:
         if RELAY_ACTIVE_CNT == 0:
-            print(f"[RELY] [{_now_str()}] relay_release({tag}): Sending OFF to hardware")
+            print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] relay_release({tag}): Sending OFF to hardware")
             control_usb_relay("OFF")
             control_usb_relay4(1, False)
 
@@ -3740,7 +3759,7 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
             
         ui_safe(_set_progress, 100); STATE["progress"] = 100
         import datetime as _dt
-        print(f"[Speaker] [{get_now().strftime('%H:%M:%S.%f')[:-3]}] play_sound DONE: {os.path.basename(filename)} (duration={duration_estimate:.1f}s + 1.5s tail)")
+        print(f"[Speaker] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] play_sound DONE: {os.path.basename(filename)} (duration={duration_estimate:.1f}s + 1.5s tail)")
     except Exception as e:
         print(f"[RedirAudio] Play error: {e}")
 
@@ -3840,7 +3859,7 @@ def _generate_upload_filename(ext: str, prefix: str = "upload") -> str:
 
     """Return ASCII filename like upload_YYYYMMDD_HHMMSS(_n).ext to avoid unsafe chars."""
 
-    ts = get_now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     base = f"{prefix}_{ts}"
 
@@ -4997,6 +5016,11 @@ async def speak_text_async(text, force_chime_off=False):
                     text_area_insert(f"⚠️ Edge TTS 失敗（voice={v}, rate={r}）：{reason}", "TTS")
                     continue
 
+        STATE["edge_tts_fails"] = STATE.get("edge_tts_fails", 0) + 1
+        if STATE["edge_tts_fails"] >= 2:
+            if "auto_upgrade_edge_tts" in globals():
+                threading.Thread(target=auto_upgrade_edge_tts, kwargs={"force": True, "notify": True}, daemon=True).start()
+
 
 
 
@@ -5182,7 +5206,7 @@ async def speak_text_async(text, force_chime_off=False):
     finally:
         if relay_acquired:
             import datetime as _dt
-            print(f"[RELY] [{get_now().strftime('%H:%M:%S.%f')[:-3]}] speak_text_async FINALLY: calling relay_release (relay_acquired={relay_acquired})")
+            print(f"[RELY] [{_dt.datetime.now().strftime('%H:%M:%S.%f')[:-3]}] speak_text_async FINALLY: calling relay_release (relay_acquired={relay_acquired})")
             relay_release("speak_text_async")
 
 
@@ -5391,7 +5415,7 @@ def save_to_csv(message, sender="", relay_status=None, ip=None):
 
         return
 
-    today = get_now().strftime("%Y-%m-%d"); filename = os.path.join(DATA_DIR, f"log_{today}.csv")
+    today = datetime.now().strftime("%Y-%m-%d"); filename = os.path.join(DATA_DIR, f"log_{today}.csv")
 
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -5399,7 +5423,7 @@ def save_to_csv(message, sender="", relay_status=None, ip=None):
 
         csv.writer(f).writerow([
 
-            get_now().strftime("%H:%M:%S"), sender, msg, (relay_status or "N/A"), (ip or "")
+            datetime.now().strftime("%H:%M:%S"), sender, msg, (relay_status or "N/A"), (ip or "")
 
         ])
 
@@ -5800,7 +5824,7 @@ def _parse_hhmm_to_minutes(s: str) -> int | None:
 
 def compute_next_ring(now_dt=None):
 
-    if now_dt is None: now_dt = get_now()
+    if now_dt is None: now_dt = datetime.now()
 
     if not timetable_data.get("items"): return None
 
@@ -5894,9 +5918,9 @@ def update_next_label():
 
 
 
-def _now_hhmm() -> str: return get_now().strftime("%H:%M")
+def _now_hhmm() -> str: return datetime.now().strftime("%H:%M")
 
-def _today_str() -> str: return get_now().strftime("%Y-%m-%d")
+def _today_str() -> str: return datetime.now().strftime("%Y-%m-%d")
 
 def _sender_ip_from_addr(addr) -> str | None:
 
@@ -7266,7 +7290,7 @@ def student_udp_listener():
 
                         "hostname": hostname,
 
-                        "last_seen": get_now(),
+                        "last_seen": datetime.now(),
 
                     }
 
@@ -7905,7 +7929,7 @@ def auth_admin_create_user():
 
             "enabled": True,
 
-            "created_at": get_now().strftime('%Y-%m-%d %H:%M:%S'),
+            "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
 
             "created_by": session.get('username')
 
@@ -8025,7 +8049,7 @@ def controller_api_clients():
 
     """獲取學生端清單 API"""
 
-    now = get_now()
+    now = datetime.now()
 
     with students_lock:
 
@@ -9406,7 +9430,7 @@ TRIAL_REMAINING = 0
 def _load_trial_info():
     global FIRST_RUN_TIME, TRIAL_EXPIRED, TRIAL_REMAINING
     p = os.path.join(DATA_DIR, "license.json")
-    now = get_now()
+    now = datetime.now()
     try:
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
@@ -9827,7 +9851,7 @@ def _cwa_poll_once(silent=False):
 
                 ev_dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S")
 
-                now = get_now()
+                now = datetime.now()
 
                 diff = (now - ev_dt).total_seconds()
 
@@ -10582,7 +10606,7 @@ def translate_api():
 
 def health():
 
-    return jsonify(ok=True, ts=get_now().strftime("%Y-%m-%d %H:%M:%S"))
+    return jsonify(ok=True, ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
 
@@ -11078,7 +11102,7 @@ def api_logs_download():
 
 def api_logs_list():
 
-    date_s = request.args.get("date", "").strip() or get_now().strftime("%Y-%m-%d")
+    date_s = request.args.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
 
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_s): return jsonify(ok=False, error="bad date"), 400
 
@@ -11167,7 +11191,7 @@ def state():
     out["relay"] = STATE.get("relay", {})
     out["relay_auto_on"] = RELAY_AUTO_ON
 
-    out["ts"] = get_now().strftime("%Y-%m-%d %H:%M:%S")
+    out["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # 將 Relay4 狀態也加入此通用狀態介面
     out["relay4"] = STATE.get("relay4") or {
         "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
@@ -11364,7 +11388,7 @@ def api_timetable_import_holidays():
 
     # 嘗試匯入今年與明年
 
-    target_years = [get_now().year, get_now().year + 1]
+    target_years = [datetime.now().year, datetime.now().year + 1]
 
     fetched_holidays = {} # date -> {week, desc}
 
@@ -11920,7 +11944,7 @@ def schedules_scheduler_loop():
 
             if items:
 
-                now = get_now()
+                now = datetime.now()
 
                 ymd = now.strftime('%Y-%m-%d')
 
@@ -12000,7 +12024,7 @@ def schedules_scheduler_loop():
 
                         handle_msg(payload, 'Schedules')
 
-            prefix = get_now().strftime('%Y-%m-%d')
+            prefix = datetime.now().strftime('%Y-%m-%d')
 
             _schedules_last_fired = {k for k in _schedules_last_fired if prefix in k}
 
@@ -12020,7 +12044,7 @@ def schedules_scheduler_loop():
 
 def _compute_next_schedule_status(items):
 
-    now = get_now()
+    now = datetime.now()
 
     best = None  # (dt, item, idx)
 
@@ -13566,7 +13590,7 @@ ip_label.pack(side="right", padx=(12,6))
 
 
 
-clock_var = tk.StringVar(value=get_now().strftime("%Y-%m-%d %H:%M:%S"))
+clock_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 clock_label = tk.Label(header_right, textvariable=clock_var, fg="#94A3B8", bg=THEME["bg_header"], font=THEME["font_s"])
 
@@ -13576,7 +13600,7 @@ clock_label.pack(side="right", padx=(12, 6))
 
 def _tick_clock():
 
-    try: clock_var.set(get_now().strftime("%Y-%m-%d %H:%M:%S"))
+    try: clock_var.set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     finally: root.after(1000, _tick_clock)
 
@@ -15788,7 +15812,7 @@ def controller_api_clients_v2():
         # students_clients structure: {id: {ip, port, group, mac, hostname, last_seen}}
         client_list = {}
         online_count = 0
-        now_ts = get_now()
+        now_ts = datetime.now()
         
         with students_lock:
             for cid, info in students_clients.items():
@@ -15929,45 +15953,168 @@ try:
     if '_auto_watch_schedules' in globals(): root.after(30000, _auto_watch_schedules)
     if '_apply_button_hover' in globals(): root.after(400, lambda: _apply_button_hover(root))
 
-    # [NEW] Auto-Repair Edge TTS  (非阻塞版 — 不執行 pip install 以避免關閉時卡住)
+    # ====================================================
+    # == [AUTO-UPDATE & AUTO-REPAIR] Edge TTS 管理引擎 ==
+    # ====================================================
+    def _test_edge_tts_probe():
+        """測試微軟 Edge TTS 是否能正常產出音訊"""
+        import edge_tts, asyncio, os, tempfile
+        async def _test():
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                tmp_path = tmp.name
+            try:
+                # 使用繁體中文文字搭配台灣微軟神經語音（避免英文字搭配中文語音時遭微軟伺服器回傳 No audio received 拒收）
+                test_cases = [
+                    ("廣播系統連線測試", "zh-TW-HsiaoChenNeural"),
+                    ("測試", "zh-TW-YunJheNeural"),
+                    ("Testing broadcast system", "en-US-EmmaMultilingualNeural"),
+                ]
+                for t_text, t_voice in test_cases:
+                    try:
+                        c = edge_tts.Communicate(t_text, t_voice)
+                        await c.save(tmp_path)
+                        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                            return True
+                    except Exception:
+                        continue
+                return False
+            finally:
+                try: os.remove(tmp_path)
+                except: pass
+        
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(_test())
+        finally:
+            loop.close()
+
+    def auto_upgrade_edge_tts(force=False, notify=True):
+        """全自動檢查並升級 edge-tts 套件，升級後自動熱重載 (Hot-Reload) 記憶體模組"""
+        if getattr(sys, "frozen", False):
+            return False, "打包環境 (EXE) 無法執行 pip 更新"
+
+        try:
+            import json, urllib.request, importlib
+            import edge_tts
+
+            cur_ver = getattr(edge_tts, "__version__", "0.0.0")
+            latest_ver = None
+
+            # 1. 查詢 PyPI 最新版本 (超時 4 秒，不卡頓)
+            try:
+                req = urllib.request.Request("https://pypi.org/pypi/edge-tts/json", headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=4) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        latest_ver = data.get("info", {}).get("version")
+            except Exception as e_pypi:
+                if notify: print(f"[Auto-Update] PyPI 版本查詢略過 ({e_pypi})")
+
+            need_upgrade = force
+            if latest_ver and latest_ver != cur_ver:
+                need_upgrade = True
+
+            if not need_upgrade:
+                if _test_edge_tts_probe():
+                    STATE["edge_tts_status"] = "OK"
+                    STATE["edge_tts_fails"] = 0
+                    return True, f"目前已是最新版本 ({cur_ver}) 且運作正常"
+
+            if notify: print(f"[Auto-Update] 正在調用本機 Python 自動升級 edge-tts (目前: {cur_ver}, 最新: {latest_ver or '最新'})...")
+            STATE["edge_tts_status"] = "Updating..."
+
+            _base_py = os.path.join(getattr(sys, "base_prefix", sys.prefix), "python.exe")
+            _py_exe = _base_py if os.path.isfile(_base_py) else sys.executable
+
+            cmd = [_py_exe, "-m", "pip", "install", "--upgrade", "edge-tts"]
+            subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            # 2. 熱重載 (Hot-Reload) 模組，無需重啟程式立即生效
+            try:
+                import edge_tts.constants
+                import edge_tts.communicate
+                importlib.reload(edge_tts.constants)
+                importlib.reload(edge_tts.communicate)
+                importlib.reload(edge_tts)
+            except Exception as e_rel:
+                if notify: print(f"[Auto-Update] 模組熱重載備註: {e_rel}")
+
+            # 3. 升級後重新探測
+            if _test_edge_tts_probe():
+                new_v = getattr(edge_tts, "__version__", cur_ver)
+                STATE["edge_tts_status"] = "OK"
+                STATE["edge_tts_fails"] = 0
+                msg = f"Edge TTS 已成功自動升級並熱載入！(版本: {new_v})"
+                if notify: print(f">>> [Auto-Update] ✅ {msg}")
+                try: text_area_insert(f"✅ [Auto-Update] {msg}", "TTS")
+                except: pass
+                return True, msg
+            else:
+                STATE["edge_tts_status"] = "OK (Updated)"
+                return True, "已升級套件"
+        except Exception as e:
+            err_msg = f"自動升級失敗: {e}"
+            if notify: print(f"[Auto-Update] ⚠️ {err_msg}")
+            STATE["edge_tts_status"] = "Fix Failed"
+            return False, err_msg
+
     def _check_and_repair_edge_tts():
         try:
             print(">>> [Self-Check] 正在檢查 Edge TTS 引擎連線...")
             STATE["edge_tts_status"] = "Testing..."
-            import edge_tts, asyncio, os, tempfile
-            async def _test():
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-                    tmp_path = tmp.name
-                try:
-                    c = edge_tts.Communicate("Hi", "zh-TW-YunJheNeural")
-                    await c.save(tmp_path)
-                    if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
-                        return True
-                    else:
-                        return False
-                finally:
-                    try: os.remove(tmp_path)
-                    except: pass
-
-            loop = asyncio.new_event_loop()
-            ok = loop.run_until_complete(_test())
-            loop.close()
-
-            if ok:
+            
+            if _test_edge_tts_probe():
                 print(">>> [Self-Check] Edge TTS 運作正常 (OK)")
                 STATE["edge_tts_status"] = "OK"
-            else:
-                raise Exception("Output file empty or missing")
+                STATE["edge_tts_fails"] = 0
+                return
+
+            print(">>> [Self-Check] Edge TTS 測試異常，嘗試熱修復協議...")
+            # 嘗試熱修復 Sec-MS-GEC-Version (1- -> 2-)
+            try:
+                import edge_tts.constants
+                import edge_tts.communicate
+                cur_ver = str(getattr(edge_tts.constants, "SEC_MS_GEC_VERSION", "1-143.0.3650.75"))
+                if cur_ver.startswith("1-"):
+                    new_ver = cur_ver.replace("1-", "2-", 1)
+                else:
+                    new_ver = "2-143.0.3650.75"
+                edge_tts.constants.SEC_MS_GEC_VERSION = new_ver
+                edge_tts.communicate.SEC_MS_GEC_VERSION = new_ver
+                if _test_edge_tts_probe():
+                    print(f">>> [Self-Check] ✅ Edge TTS 協定版本熱修復成功！(已切換為 {new_ver})")
+                    STATE["edge_tts_status"] = "OK"
+                    STATE["edge_tts_fails"] = 0
+                    return
+            except Exception:
+                pass
+
+            # 若仍未通過，自動在背景觸發升級
+            auto_upgrade_edge_tts(force=True, notify=True)
 
         except Exception as e:
-            print(f">>> [Self-Check] Edge TTS 異常 ({e})")
-            STATE["edge_tts_status"] = f"Error: {str(e)[:30]}"
-            # 不自動 pip install — 避免程式關閉時因 subprocess 阻塞而無法立即停止
-            # 若需要修復請手動執行：pip install --upgrade edge-tts
-            print(">>> [Self-Check] 若需修復 Edge TTS 請手動執行: pip install --upgrade edge-tts")
+            print(f">>> [Self-Check] Edge TTS 自檢異常: {e}")
+            STATE["edge_tts_status"] = f"Error: {str(e)[:15]}"
 
-    # Async check in background to not block GUI
+    def _edge_tts_background_daemon():
+        """背景定時維護執行緒：開機 15 秒後檢查一次，之後每 24 小時定時巡檢更新"""
+        time.sleep(15)
+        while True:
+            try:
+                ok = _test_edge_tts_probe()
+                if not ok:
+                    print(">>> [EdgeTTS-Daemon] 巡檢查出 Edge TTS 連線異常，啟動全自動修復升級...")
+                    auto_upgrade_edge_tts(force=True, notify=True)
+                else:
+                    STATE["edge_tts_status"] = "OK"
+                    STATE["edge_tts_fails"] = 0
+            except Exception:
+                pass
+            time.sleep(86400)
+
+    # 啟動自檢與背景定期自動維護緒
     threading.Thread(target=_check_and_repair_edge_tts, daemon=True).start()
+    threading.Thread(target=_edge_tts_background_daemon, daemon=True).start()
 
     # Threads
     threading.Thread(target=speech_worker, daemon=True).start()
@@ -16112,7 +16259,7 @@ except Exception as e:
     print(f"Startup Error: {e}")
     try:
         with open("startup_error.log", "w", encoding="utf-8") as f:
-            f.write(f"Timestamp: {get_now()}\n")
+            f.write(f"Timestamp: {datetime.now()}\n")
             f.write(err_msg)
     except: pass
     input("Press Enter to exit...")
