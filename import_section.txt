@@ -1,0 +1,50 @@
+﻿                except (OSError, IOError, TypeError):
+                    return "dummy_source_file.py"
+
+            inspect.getsource = _patched_getsource
+            inspect.getfile = _patched_getfile
+            _log_boot(f"[SETUP] Frozen mode: Monkeypatched inspect.getsource to suppress source code errors")
+            
+            found = True
+            break
+
+    if not found:
+
+        _log_boot(f"[SETUP] Frozen mode: Warning - cacert.pem not found in candidates: {candidates}")
+
+        os.environ['SSL_CERT_FILE'] = certifi.where()
+
+else:
+
+    os.environ['SSL_CERT_FILE'] = certifi.where()
+
+    _log_boot(f"[SETUP] Script mode: Set SSL_CERT_FILE to {certifi.where()}")
+
+
+
+_log_boot(f"[SETUP] ssl.get_default_verify_paths() = {ssl.get_default_verify_paths()}")
+
+
+
+# ---- Tkinter??I ????瞍??穿蕭?----
+# Render / Linux ??選蕭????tkinter ?誥??埠??????輯撒??try/except ?質憸?
+_HAS_TKINTER = False
+try:
+    import socket, tkinter as tk, tkinter.ttk as ttk
+    from tkinter import filedialog, messagebox, simpledialog
+    from tkinter.scrolledtext import ScrolledText
+    _HAS_TKINTER = True
+except Exception:
+    # --- tkinter Stub????箏掘艟?嚙質??荔蕭??臐??????朣? NameError ---
+    import types as _types, socket
+    tk = _types.ModuleType("tk")
+    ttk = _types.ModuleType("ttk")
+    class _W:
+        def __init__(self, *a, **kw): pass
+        def __call__(self, *a, **kw): return _W()
+        def __getattr__(self, n): return _W()
+        def config(self, *a, **kw): pass
+        def configure(self, *a, **kw): pass
+        def grid(self, **kw): pass
+        def pack(self, **kw): pass
+        def place(self, **kw): pass

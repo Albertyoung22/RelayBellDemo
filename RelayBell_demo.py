@@ -8,13 +8,13 @@ BROADCAST_CACHE = collections.deque(maxlen=10)
 
 UDP 語音接收端（含桌面 UI｜保留全部原功能｜前端頁面獨立，不內建在程式裡）
 
-- 保留：Tkinter 桌面 UI、UDP 接收、TTS、MP3/YouTube 播放、上傳清單、課表排程、ngrok（可選）
+- 保留：Tkinter 桌面 UI、UDP 接收、TTS、MP3/YouTube 播放、上傳清單、自動排程、ngrok（可選）
 
-- Web 僅提供 API：/translate（mini_translator 流程）、/send、/sendmp3、/cmd、/state、/files、/upload、/download、/delete、/timetable/*、/schedules/*、/logs*、/piper/*
+- Web 僅提供 API：/translate（mini_translator 流程）、/send、/sendmp3、/cmd /state /files /upload /download /delete /timetable/* /schedules/* /logs* /piper/*
 
 - 內建 Edge TTS → Piper（第二順位）→ gTTS → SAPI5
 
-- UI 與原需求一致：主控台、課表、檔案/上傳、自訂排程 4 分頁（外觀維持）
+- UI 與原需求一致：主控台、排程、檔案/上傳、自訂任務 4 分頁（外觀維持）
 
 
 
@@ -47,7 +47,6 @@ UDP 語音接收端（含桌面 UI｜保留全部原功能｜前端頁面獨立�
 
 USE_NGROK = False           # 想關掉 ngrok 就改 False
 
-USE_MELO_TTS = False        # [NEW] 是否使用 MeloTTS (第1順位)
 USE_EDGE_TTS = True         # 是否使用 Edge TTS (若 False 則直接跳過，使用 Piper/gTTS)
 
 USE_AI_GENERATION = True    # 是否啟用 AI 廣播稿生成 (若 False 則不需安裝 Ollama)
@@ -58,7 +57,7 @@ PORT = 8888                 # UDP 監聽埠
 
 YT_AUTO_CLOSE_MIN = 30      # 全螢幕逾時自關閉（分鐘）←保留欄位
 
-TIMETABLE_SCAN_SEC = 5      # 課表掃描週期（秒）
+TIMETABLE_SCAN_SEC = 5      # 排程掃描週期（秒）
 
 DISABLE_UDP = False         # True 時不啟動 UDP 接收緒（純本機）
 
@@ -113,7 +112,14 @@ import ssl
 import time
 import json
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+# [Timezone] Define Taiwan timezone (UTC+8) globally
+TAIWAN_TZ = timezone(timedelta(hours=8))
+
+def get_now():
+    """Returns the current datetime in Taiwan timezone (UTC+8)."""
+    return datetime.now(TAIWAN_TZ)
 
 # ==========================================================
 #  快速指令 -> 本機音檔映射表 (直接播放,不走 audio_proxy)
@@ -147,10 +153,31 @@ _BOOT_LOGS = []
 
 
 def _log_boot(msg):
-
     print(msg)
-
     _BOOT_LOGS.append(msg)
+
+# [NEW] Import JsonBlob Helper for Remote Storage
+try:
+    from jsonblob_helper import JsonBlobDB
+    CLOUD_DB = JsonBlobDB()
+    _log_boot(f"[CLOUD] Cloud DB initialized with URL: {CLOUD_DB.url}")
+    
+    # Unified sync function to avoid overwriting sections
+    def sync_cloud_section(section_name, data):
+        def _task():
+            current = CLOUD_DB.pull() or {}
+            current[section_name] = data
+            CLOUD_DB.push(current)
+        threading.Thread(target=_task, daemon=True).start()
+        
+except ImportError:
+    CLOUD_DB = None
+    sync_cloud_section = lambda k, v: None
+    _log_boot("[CLOUD] Warning: jsonblob_helper.py not found. Cloud sync disabled.")
+except Exception as e:
+    CLOUD_DB = None
+    sync_cloud_section = lambda k, v: None
+    _log_boot(f"[CLOUD] Error initializing Cloud DB: {e}")
 
 
 # [AUTO-ENVIRONMENT-SWITCH]
@@ -185,7 +212,7 @@ def _global_excepthook(exc_type, exc_value, exc_traceback):
         import traceback
         err_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         with open("startup_crash.log", "w", encoding="utf-8") as f:
-            f.write(f"Timestamp: {datetime.now()}\n")
+            f.write(f"Timestamp: {get_now()}\n")
             f.write("Global Crash:\n")
             f.write(err_msg)
     except: pass
@@ -434,7 +461,7 @@ from functools import wraps
 from urllib.parse import quote
 _HAS_PYGAME = False
 print("========================================")
-print(" RelayBell Demo Web System v2.1.2-GUID")
+print(" OmniSignal Demo System v2.1.2-GUID")
 print("========================================")
 
 import yt_dlp
@@ -477,7 +504,44 @@ def _save_chime_config():
             json.dump({"enabled": CHIME_ENABLED}, f)
     except: pass
 
+def _load_voice_config():
+    """從磁碟或雲端載入語音設定"""
+    global voice_rate, voice_volume
+    _v_p = os.path.join(DATA_DIR, "voice_config.json")
+    try:
+        data = None
+        if os.path.exists(_v_p):
+            with open(_v_p, "r") as f:
+                data = json.load(f)
+            print(f"[VOICE] Loaded settings from disk")
+        elif CLOUD_DB:
+            print("[VOICE] Local config missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "voice_config" in cloud_data:
+                data = cloud_data["voice_config"]
+                print(f"[VOICE] Restored settings from cloud")
+                with open(_v_p, "w") as f:
+                    json.dump(data, f)
+        
+        if data:
+            voice_rate = data.get("rate", "+0%")
+            voice_volume = data.get("volume", 100)
+    except Exception as e:
+        print(f"[VOICE] Error loading config: {e}")
 
+def _save_voice_config():
+    """保存語音設定並同步到雲端"""
+    try:
+        _v_p = os.path.join(DATA_DIR, "voice_config.json")
+        data = {
+            "rate": globals().get("voice_rate", "+0%"),
+            "volume": globals().get("voice_volume", 100)
+        }
+        with open(_v_p, "w") as f:
+            json.dump(data, f)
+        # Sync to cloud
+        sync_cloud_section("voice_config", data)
+    except: pass
 
 
 # ==== [schedules 防呆 JSON 解析工具] ====
@@ -755,7 +819,7 @@ def _get_weather_report():
 
         
 
-        now_str = datetime.now().strftime("%H點%M分")
+        now_str = get_now().strftime("%H點%M分")
 
         return f"現在時間 {now_str}，所在位置 {loc_name}，目前氣溫 {temp} 度，相對濕度 {humid}%，天氣狀況：{status}{aqi_str}。"
 
@@ -800,26 +864,31 @@ def _is_frozen():
 
 
 def resource_path(relative_path: str) -> str:
-
+    """
+    Resolve resource path for both script and frozen (PyInstaller) modes.
+    Adds heuristic to find audio files in 'static/audio' even if prefix is missing.
+    """
     if getattr(sys, "frozen", False):
-
         exe_dir = os.path.dirname(sys.executable)
-
         p1 = os.path.join(exe_dir, relative_path)
-
         if os.path.exists(p1): return p1
-
         if hasattr(sys, "_MEIPASS"):
-
             p2 = os.path.join(sys._MEIPASS, relative_path)
-
             if os.path.exists(p2): return p2
-
+        # Fallback for audio in frozen app
+        basename = os.path.basename(relative_path)
+        p3 = os.path.join(exe_dir, "static", "audio", basename)
+        if os.path.exists(p3): return p3
         return p1
 
     base = os.path.abspath(os.path.dirname(__file__))
-
-    return os.path.join(base, relative_path)
+    p = os.path.join(base, relative_path)
+    if not os.path.exists(p):
+        # Heuristic: if file not found, try stripping directory and looking in static/audio
+        basename = os.path.basename(relative_path)
+        p_static = os.path.join(base, "static", "audio", basename)
+        if os.path.exists(p_static): return p_static
+    return p
 
 
 
@@ -866,65 +935,48 @@ RECORD_DIR = os.path.join(APP_DIR, "Recoding")
 os.makedirs(RECORD_DIR, exist_ok=True)
 
 
-# ===============================
-# == [ANCHOR] MeloTTS Setup ==
-# ===============================
+VOLUME_LEVEL = 80
 
-MELO_SPEAKER = "ZH" # [NEW] 全域 Melo 語者 ID (預設中文)
-HAS_MELO = False
-MELO_ERR = ""
-melo_model = None
+speech_queue = queue.Queue(maxsize=100)
+youtube_queue = queue.Queue(maxsize=30)
+mp3_queue = queue.Queue(maxsize=30)
+
+def enqueue_drop_old(q: queue.Queue, item):
+    if q.full():
+        with q.mutex:
+            q.queue.clear()
+    q.put(item)
+
+STATE = {
+    "muted": False,
+    "lang": "zh-TW",
+    "gender": "female",
+    "rate": "-20%",
+    "volume": VOLUME_LEVEL,
+    "playing": "idle",
+    "progress": 0,
+    "ngrok_url": None,
+    "mp3_progress": 0,
+    "mpv_ipc_path": None,
+    "auto_unmute_on_play": True,
+    "timetable": {"enabled": True, "loaded": False, "count": 0, "path": ""},
+    "azure_speech_key": "",
+    "azure_speech_region": "",
+    "edge_tts_status": "Checking...",
+    "render_url": os.environ.get("RENDER_EXTERNAL_URL", "https://relaybelldemo.onrender.com"),
+    "version": "2.1.2-GUID",
+}
 
 try:
-    _melo_state = globals().get("USE_MELO_TTS", False)
-    print(f"[DEBUG-INIT] Starting Setup Check. USE_MELO_TTS is: {_melo_state}")
-    
-    if _melo_state:
-        print(f"[DEBUG-INIT] Entering MeloTTS setup block...")
-        try:
-             import torch
-             # Try importing MeloTTS
-             # Installation: pip install melotts
-             try:
-                from melo.api import TTS
-             except ImportError:
-                # Try fallback or re-raise
-                print("[SETUP] melo.api not found. Please run: pip install melotts")
-                raise
+    with open(os.path.join(APP_DIR, "azure_config.json"), "r", encoding="utf-8") as f:
+        _ac = json.load(f)
+        STATE["azure_speech_key"] = _ac.get("azure_speech_key", "")
+        STATE["azure_speech_region"] = _ac.get("azure_speech_region", "")
+except Exception:
+    pass
 
-             # Check device
-             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-             print(f"[SETUP] Initializing MeloTTS (ZH) on {device}...")
-             
-             # Initialize Model (Auto-download if needed)
-             # Note: This might take time on first run
-             _log_boot(f"[SETUP] Loading MeloTTS model (Device={device})...")
-             melo_model = TTS(language='ZH', device=device)
-             
-             HAS_MELO = True
-             _log_boot("✅ MeloTTS 載入完成！")
-             
-             try:
-                 spks = melo_model.hps.data.spk2id
-                 print(f"[SETUP] Available Melo Speakers: {spks}")
-             except: pass
-             
-        except ImportError as e:
-             HAS_MELO = False
-             MELO_ERR = f"Import Error: {e} (Please pip install melotts)"
-             _log_boot(f"[WARN] MeloTTS Import Failed: {e}")
-        except Exception as e:
-             HAS_MELO = False
-             MELO_ERR = str(e)
-             import traceback
-             full_trace = traceback.format_exc()
-             print(f"[DEBUG-INIT] MeloTTS init failed:\n{full_trace}")
-             _log_boot(f"[WARN] MeloTTS Init Failed: {e}")
-
-except Exception as e:
-    HAS_MELO = False
-    MELO_ERR = str(e)
-    print(f"[DEBUG-INIT] General Exception caught: {e}")
+AUTO_UNMUTE_ON_PLAY = True
+_updating_volume_ui = False
 
 
 
@@ -1074,6 +1126,12 @@ app.template_folder = UI_TEMPLATE_DIR
 
 sock = Sock(app)
 
+@app.route('/ping')
+def api_ping():
+    """Simple health check endpoint for Render keep-alive."""
+    return "ok"
+
+
 app.secret_key = secrets.token_hex(16)
 
 @app.route('/api/speak_v2', methods=['POST'])
@@ -1103,25 +1161,52 @@ def api_speak_v2():
 
 @app.route('/api/get_relay_config')
 def api_get_relay_config():
-    return jsonify(ok=True, auto_on=RELAY_AUTO_ON)
+    return jsonify(
+        ok=True, 
+        auto_on=RELAY_AUTO_ON, 
+        port=RELAY_PORT, 
+        relay4_port=RELAY4_PORT,
+        ports=RELAY_INFO.get("ports", [])
+    )
 
 @app.route('/api/set_relay_config', methods=['POST'])
 def api_set_relay_config():
-    global RELAY_AUTO_ON
+    global RELAY_AUTO_ON, RELAY_PORT, RELAY4_PORT
     try:
         data = request.json or {}
+        
+        # Handle Auto-On
         val = data.get('auto_on')
         if val is not None:
              RELAY_AUTO_ON = bool(val)
              _save_relay_config()
-             
-             # Sync Tkinter if running
              try:
                  if 'relay_auto_var' in globals():
                      ui_safe(lambda: relay_auto_var.set(RELAY_AUTO_ON))
              except: pass
-             
-        return jsonify(ok=True, auto_on=RELAY_AUTO_ON)
+
+        # Handle Port (Single)
+        port_val = data.get('port')
+        if port_val is not None:
+            RELAY_PORT = str(port_val) if port_val else None
+            try:
+                cfg = DIAG_DIR / "relay_port.txt"
+                if RELAY_PORT: cfg.write_text(RELAY_PORT, encoding="utf-8")
+                elif cfg.exists(): cfg.unlink()
+            except: pass
+            _relay_set("port", RELAY_PORT)
+
+        # Handle Port (4-Relay)
+        port4_val = data.get('relay4_port')
+        if port4_val is not None:
+            RELAY4_PORT = str(port4_val) if port4_val else None
+            try:
+                cfg = DIAG_DIR / "relay4_port.txt"
+                if RELAY4_PORT: cfg.write_text(RELAY4_PORT, encoding="utf-8")
+                elif cfg.exists(): cfg.unlink()
+            except: pass
+            
+        return jsonify(ok=True, auto_on=RELAY_AUTO_ON, port=RELAY_PORT, relay4_port=RELAY4_PORT)
     except Exception as e:
         return jsonify(ok=False, error=str(e)), 500
 
@@ -1187,8 +1272,8 @@ def api_set_chime_config():
         val = data.get('enabled')
         if val is not None:
              CHIME_ENABLED = bool(val)
-             # Save to voice config (reuse existing persistence)
-             _save_voice_config()
+             # Save to chime config (reuse existing persistence)
+             _save_chime_config()
              
              # Sync Tkinter if running
              try:
@@ -1256,8 +1341,8 @@ def api_ai_script():
             return jsonify(ok=False, error="Missing keyword"), 400
             
         system_prompt = """
-        你現在是台南市國中小的廣播系統 AI 助理。
-        請根據使用者提供的「關鍵字」，生成一段約 50-100 字，語氣親切、正式的校園廣播稿。
+        你現在是專業的智慧廣播系統 AI 助理。
+        請根據使用者提供的「關鍵字」，生成一段約 50-100 字，語氣親切、正式的播報稿。
         
         【重要規範】
         1. 僅輸出「純文字」內容，絕對禁止使用任何表情符號 (❌😊)、Markdown 格式 (❌**粗體**)、等號 (=) 或其他特殊符號。
@@ -2162,7 +2247,7 @@ def api_speak_audio_blob():
 
         # Save metadata so it appears in file list
 
-        _write_upload_meta(save_path, "錄音-" + datetime.now().strftime("%H%M%S"), fname, "audio")
+        _write_upload_meta(save_path, "錄音-" + get_now().strftime("%H%M%S"), fname, "audio")
 
 
 
@@ -2464,7 +2549,7 @@ def text_area_insert(msg: str, src: str | None = None):
 
         origin = (src or getattr(_sender_ctx, "name", None) or "System")
 
-        line = f"{datetime.now().strftime('%H:%M:%S')}  [{origin}] {msg}\n"
+        line = f"{get_now().strftime('%H:%M:%S')}  [{origin}] {msg}\n"
 
         if ta and ta.winfo_exists():
 
@@ -2518,7 +2603,7 @@ _sender_ctx = threading.local()
 
 CONFIG_FILE = "sound_config.json"
 
-DEFAULT_CONFIG = {"start_sound":"beforemic.mp3","end_sound":"beforemic2.mp3","mute_sound":"mute.mp3", "use_ai_generation": True}
+DEFAULT_CONFIG = {"start_sound":"static/audio/beforemic.mp3","end_sound":"static/audio/beforemic2.mp3","mute_sound":"static/audio/mute.mp3", "use_ai_generation": True}
 
 
 
@@ -2534,70 +2619,8 @@ stop_playback_event = threading.Event()
 
 
 
-VOLUME_LEVEL = 80
+# STATE and dependencies moved higher up
 
-
-
-speech_queue = queue.Queue(maxsize=100)
-
-youtube_queue = queue.Queue(maxsize=30)
-
-mp3_queue = queue.Queue(maxsize=30)
-
-
-
-def enqueue_drop_old(q: queue.Queue, item):
-
-    if q.full():
-
-        with q.mutex:
-
-            q.queue.clear()
-
-    q.put(item)
-
-
-
-
-
-STATE = {
-    "muted": False,
-    "lang": "zh-TW",
-    "gender": "female",
-    "rate": "-20%",
-    "volume": VOLUME_LEVEL,
-    "playing": "idle",
-    "progress": 0,
-    "ngrok_url": None,
-    "mp3_progress": 0,
-    "mpv_ipc_path": None,
-    "auto_unmute_on_play": True,
-    "timetable": {"enabled": True, "loaded": False, "count": 0, "path": ""},
-    "azure_speech_key": "",
-    "azure_speech_region": "",
-    "edge_tts_status": "Checking...",
-    "version": "2.1.2-GUID",
-}
-
-try:
-
-    with open(os.path.join(APP_DIR, "azure_config.json"), "r", encoding="utf-8") as f:
-
-        _ac = json.load(f)
-
-        STATE["azure_speech_key"] = _ac.get("azure_speech_key", "")
-
-        STATE["azure_speech_region"] = _ac.get("azure_speech_region", "")
-
-except Exception:
-
-    pass
-
-
-
-AUTO_UNMUTE_ON_PLAY = True
-
-_updating_volume_ui = False
 
 
 
@@ -2649,24 +2672,32 @@ MIXER_LOCK = threading.RLock()
 
 
 def load_config():
-
     if not os.path.exists(CONFIG_FILE):
-
+        if CLOUD_DB:
+            # [NEW] Cloud Restore for Sound Config
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "sound_config" in cloud_data:
+                data = cloud_data["sound_config"]
+                _log_boot(f"[CLOUD] Restored sound_config from cloud")
+                save_config(data)
+                return data
+        
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-
             json.dump(DEFAULT_CONFIG, f, ensure_ascii=False, indent=2)
 
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-
         return json.load(f)
 
 
 
 def save_config(config):
-
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-
-        json.dump(config, f, ensure_ascii=False, indent=2)
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        # Sync to cloud
+        sync_cloud_section("sound_config", config)
+    except Exception as e:
+        print("Save sound_config error:", e)
 
 
 
@@ -2692,36 +2723,44 @@ BUDDHA_SHORTCUTS_FILE = "buddha_shortcuts.json"
 
 
 def load_shortcuts():
-
     if not os.path.exists(SHORTCUTS_FILE):
-
+        if CLOUD_DB:
+            # [NEW] Cloud Restore for Shortcuts
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "shortcuts" in cloud_data:
+                data = cloud_data["shortcuts"]
+                _log_boot(f"[CLOUD] Restored shortcuts from cloud ({len(data)} items)")
+                save_shortcuts(data) # Sync locally
+                return data
         return []
-
     try:
-
         with open(SHORTCUTS_FILE, "r", encoding="utf-8") as f:
-
             return json.load(f)
-
     except Exception:
-
         return []
 
 
 
 def save_shortcuts(data):
-
     try:
-
         with open(SHORTCUTS_FILE, "w", encoding="utf-8") as f:
-
             json.dump(data, f, ensure_ascii=False, indent=2)
-
+        # Sync to cloud
+        sync_cloud_section("shortcuts", data)
     except Exception as e:
         print("Save shortcuts error:", e)
 
 def load_buddha_shortcuts():
-    if not os.path.exists(BUDDHA_SHORTCUTS_FILE): return []
+    if not os.path.exists(BUDDHA_SHORTCUTS_FILE):
+        if CLOUD_DB:
+            # [NEW] Cloud Restore for Buddha Shortcuts
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "buddha_shortcuts" in cloud_data:
+                data = cloud_data["buddha_shortcuts"]
+                _log_boot(f"[CLOUD] Restored buddha_shortcuts from cloud ({len(data)} items)")
+                save_buddha_shortcuts(data)
+                return data
+        return []
     try:
         with open(BUDDHA_SHORTCUTS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -2731,6 +2770,8 @@ def save_buddha_shortcuts(data):
     try:
         with open(BUDDHA_SHORTCUTS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+        # Sync to cloud
+        sync_cloud_section("buddha_shortcuts", data)
     except Exception as e:
         print("Save Buddha shortcuts error:", e)
 
@@ -2773,6 +2814,8 @@ def _relay_set(key, val):
         "ports": RELAY_INFO.get("ports"),
 
         "ts": RELAY_INFO.get("last_update_ts"),
+
+        "status": RELAY_INFO.get("status", "OFF")
 
     }
 
@@ -2859,8 +2902,12 @@ def get_manual_relay_port():
 
 
 def auto_detect_lcus_port(max_wait_s: float = 8.0):
-
     manual = get_manual_relay_port()
+    # 🆕 徹底防止背景探測試圖開啟 Serial Port
+    if manual in ("DISABLED", "NONE"):
+        print(">>> [Relay] Backend Serial Access is CRITICALLY DISABLED (Web Direct Mode)")
+        _relay_set("status", "DISABLED")
+        return "DISABLED"
 
     if manual:
 
@@ -2954,15 +3001,56 @@ RELAY_PORT = get_manual_relay_port() or auto_detect_lcus_port()
 
 def control_usb_relay(status, retries=5):
     global RELAY_PORT
-    # Bypass actual hardware control
-    _relay_set("last_cmd", f"Write:{status} (Mocked)")
-    _relay_set("last_result", "OK")
-    _relay_set("last_error", "")
     
-    save_to_csv(f"Relay set to {status} (Mocked)", "System", status)
-    ui_safe(lambda: status_label.config(text=f" 語音啟用中，繼電器：{status} (模擬)"))
-    print(f"[Relay] Mocked control_usb_relay: {status}")
-    return
+    # 🆕 Check if disabled for Web Serial Mode
+    if RELAY_PORT in ("DISABLED", "NONE"):
+        msg = f"[Relay] Backend control is DISABLED. Skipping physical {status} - Port released for Browser."
+        print(msg)
+        text_area_insert(msg, "RELY")
+        _relay_set("last_cmd", f"Skip:{status} (WebMode)")
+        # 🆕 Still update status so Web UI can sync it to local hardware
+        _relay_set("status", status)
+        return False
+    
+    # Auto-detect if port is missing
+    if not RELAY_PORT:
+        RELAY_PORT = auto_detect_lcus_port()
+        print(f"[Relay] Auto-detected port: {RELAY_PORT}")
+    
+    # Update UI state
+    _relay_set("last_cmd", f"Write:{status}")
+    _relay_set("status", status)
+    
+    if not RELAY_PORT:
+        _relay_set("last_result", "FAIL")
+        _relay_set("last_error", "No available COM port")
+        save_to_csv(f"Relay set to {status} (FAILED: No Port)", "System", status)
+        ui_safe(lambda: status_label.config(text=f" ❌ 無法偵測到繼電器 (COM)"))
+        print(f"[Relay] control_usb_relay: FAILED - No COM port found.")
+        return False
+
+    # LCUS Protocol: A0 [CH] [STATUS] [SUM]
+    # Sum = (A0 + CH + STATUS) & 0xFF
+    cmd = b"\xA0\x01\x01\xA2" if status == "ON" else b"\xA0\x01\x00\xA1"
+    
+    try:
+        import serial
+        with RELAY_LOCK:
+            with serial.Serial(RELAY_PORT, 9600, timeout=1.0) as ser:
+                ser.write(cmd)
+                _relay_set("last_result", "OK")
+                _relay_set("last_error", "")
+                save_to_csv(f"Relay set to {status}", "System", status)
+                ui_safe(lambda: status_label.config(text=f" 語音啟用中，繼電器：{status}"))
+                print(f"[Relay] Port {RELAY_PORT} set to {status} (SUCCESS)")
+                return True
+    except Exception as e:
+        _relay_set("last_result", "FAIL")
+        _relay_set("last_error", str(e))
+        save_to_csv(f"Relay control failed: {e}", "System", "Failed")
+        ui_safe(lambda: status_label.config(text="❌ 繼電器控制失敗"))
+        print(f"[Relay] Port {RELAY_PORT} control error: {e}")
+        return False
 
     save_to_csv("Relay control failed", "System", "Failed")
 
@@ -3049,53 +3137,64 @@ RELAY4_INFO = {
 
 
 def _relay4_set(key, val):
-
     RELAY4_INFO[key] = val
-
     RELAY4_INFO["last_update_ts"] = time.time()
+    # ✅ 同步更新到全域 STATE 以便 /state API 返回
+    if "relay4" not in STATE: STATE["relay4"] = {}
+    st_clean = {str(k): int(v) for k, v in (RELAY4_INFO.get("ch_state") or {1:0,2:0,3:0,4:0}).items()}
+    STATE["relay4"] = {
+        "port": RELAY4_INFO.get("port") or globals().get("RELAY4_PORT", ""),
+        "ch_state": st_clean,
+        "last_cmd": RELAY4_INFO.get("last_cmd"),
+        "last_result": RELAY4_INFO.get("last_result"),
+        "ts": RELAY4_INFO.get("last_update_ts"),
+    }
+    # ✅ 廣播同步：確保所有開啟 relay4.html 的頁面即時更新
+    try:
+        import json as _j
+        _msg = _j.dumps({
+            "type": "relay4_state",
+            "ch_state": st_clean,
+            "port": STATE["relay4"]["port"],
+            "last_cmd": STATE["relay4"]["last_cmd"]
+        })
+        _broadcast_web(_msg)
+    except: pass
 
 
 
 def get_manual_relay4_port():
-
     """從 ~/.udp_receiver/relay4_port.txt 或環境變數 RELAY4_PORT 讀取 4-Relay COM。"""
-
     env = os.environ.get("RELAY4_PORT")
-
-    if env:
-
-        # _diag(f"[4R] Manual port from ENV -> {env}")
-
-        return env.strip()
-
+    if env: return env.strip()
+    
     cfg = DIAG_DIR / "relay4_port.txt"
-
     if cfg.exists():
-
         try:
-
             val = cfg.read_text(encoding="utf-8").strip()
-
-            if val:
-
-                # _diag(f"[4R] Manual port from relay4_port.txt -> {val}")
-
-                return val
-
-        except Exception as e:
-
-            _diag(f"[4R] Read relay4_port.txt error: {e}")
-
+            if val: return val
+        except: pass
+        
+    # 🆕 Fallback to relay_port.txt if it's DISABLED
+    cfg_main = DIAG_DIR / "relay_port.txt"
+    if cfg_main.exists():
+        try:
+            val = cfg_main.read_text(encoding="utf-8").strip()
+            if val == "DISABLED": return "DISABLED"
+        except: pass
+        
     return None
 
 
 
 def auto_detect_4relay_port(max_wait_s: float = 8.0):
+    manual = get_manual_relay4_port()
+    # 🆕 徹底防止 4-Relay 背景探測
+    if manual in ("DISABLED", "NONE"):
+        print(">>> [4R] 4-Relay Backend Serial Access is CRITICALLY DISABLED")
+        return "DISABLED"
 
     """4-Relay 自動掃描：盡量找「不是單 Relay」的 CH34x COM。"""
-
-    manual = get_manual_relay4_port()
-
     if manual:
 
         with RELAY4_LOCK:
@@ -3268,20 +3367,44 @@ RELAY4_PORT = get_manual_relay4_port() or auto_detect_4relay_port()
 
 def control_usb_relay4(ch: int, on: bool, retries: int = 5, port_override: str | None = None):
     global RELAY4_PORT
-    if ch not in (1, 2, 3, 4):
-        raise ValueError("ch 必須是 1~4")
+    if ch not in (1, 2, 3, 4): raise ValueError("ch 必須是 1~4")
 
-    # Bypass actual hardware control
-    _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'} (Mocked)")
+    # [Sync] 只要指令送達，第一時間更新狀態與廣播 (Virtual Sync)
+    # 這樣即便伺服器沒接實體，Web Serial 切換後，其他電腦也能即時看到變色
+    with RELAY4_LOCK:
+        st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
+        st[int(ch)] = 1 if on else 0
+        _relay4_set("ch_state", st)
+        _relay4_set("status", "ON" if any(st.values()) else "OFF")
+        _relay4_set("last_cmd", f"CH{ch}:{'ON' if on else 'OFF'}")
+
+    # 若處於 DISABLED 模式，直接返回 (Web Direct Mode)
+    if RELAY4_PORT in ("DISABLED", "NONE") and not port_override:
+        print(f"[4R-WebMode] CH{ch} -> {'ON' if on else 'OFF'}")
+        return True
+
+    target_port = port_override or RELAY4_PORT or auto_detect_4relay_port()
+    if not target_port:
+        _relay4_set("last_result", "FAIL")
+        _relay4_set("last_error", "No COM port available")
+        return False
+
+    # Protocol: A0 [CH] [STATUS] [SUM]
+    sum_val = (0xA0 + ch + (1 if on else 0)) & 0xFF
+    cmd = bytes([0xA0, ch, 1 if on else 0, sum_val])
     
-    st = RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0}
-    st[int(ch)] = 1 if on else 0
-    _relay4_set("ch_state", st)
-    _relay4_set("last_result", "OK")
-    _relay4_set("last_error", "")
-    ui_safe(refresh_relay4_ui)
-    print(f"[4R] Mocked control_usb_relay4: CH{ch}={'ON' if on else 'OFF'}")
-    return True
+    try:
+        import serial
+        with RELAY4_LOCK:
+            with serial.Serial(target_port, 9600, timeout=1.0) as ser:
+                ser.write(cmd)
+                return True
+    except Exception as e:
+        msg = f"[4R] Hardware Write Error: {e}"
+        print(msg)
+        _relay4_set("last_result", "FAIL")
+        _relay4_set("last_error", str(e)[:180])
+        return False
 
 
 
@@ -3292,7 +3415,8 @@ RELAY_ACTIVE_LOCK = threading.RLock()
 
 # [NEW] Relay Config Persistence
 RELAY_CONFIG_PATH = Path(DATA_DIR) / "relay_config.json"
-RELAY_AUTO_ON = True
+RELAY_AUTO_ON = False
+RELAY_OFF_DELAY = 0.5  # 最終保險延遲 (play_sound 內部已有 1.5 秒 browser 緩衝)
 
 def _save_relay_config():
     try:
@@ -3307,7 +3431,7 @@ def _load_relay_config():
     try:
         if RELAY_CONFIG_PATH.exists():
             data = json.loads(RELAY_CONFIG_PATH.read_text(encoding="utf-8"))
-            RELAY_AUTO_ON = data.get("auto_on", True)
+            RELAY_AUTO_ON = data.get("auto_on", False)
             print(f"[Config] Loaded relay config: auto_on={RELAY_AUTO_ON}")
     except Exception as e:
         print(f"[Config] Load relay config failed: {e}")
@@ -3330,6 +3454,7 @@ def relay_acquire(tag: str = "") -> bool:
             if RELAY_AUTO_ON:
                 first_open = True
                 control_usb_relay("ON")
+                control_usb_relay4(1, True)
             else:
                 _diag(f"[Relay] acquire({tag}) but Auto-On disabled. Skipping ON.")
 
@@ -3338,18 +3463,32 @@ def relay_acquire(tag: str = "") -> bool:
 
 
 def relay_release(tag: str = ""):
-
     global RELAY_ACTIVE_CNT
-
+    import datetime as _dt
+    # Use global get_now for timezone consistency
+    def _now_str(): return get_now().strftime('%H:%M:%S.%f')[:-3]
     with RELAY_ACTIVE_LOCK:
-
         RELAY_ACTIVE_CNT = max(0, RELAY_ACTIVE_CNT - 1)
+        if RELAY_ACTIVE_CNT > 0:
+            print(f"[RELY] [{_now_str()}] relay_release({tag}): cnt={RELAY_ACTIVE_CNT}, still held")
+            return
 
+    # We reached 0. 
+    print(f"[RELY] [{_now_str()}] relay_release({tag}): cnt=0, will OFF after {RELAY_OFF_DELAY}s")
+    if not RELAY_AUTO_ON:
+        _diag(f"[Relay] release({tag}) but Auto-On disabled. Skipping OFF.")
+        return
+
+    # Wait for browser buffer/latency (OUTSIDE LOCK)
+    if RELAY_OFF_DELAY > 0:
+        time.sleep(RELAY_OFF_DELAY)
+    
+    # Final check if it's still 0
+    with RELAY_ACTIVE_LOCK:
         if RELAY_ACTIVE_CNT == 0:
-            if RELAY_AUTO_ON:
-                control_usb_relay("OFF")
-            else:
-                _diag(f"[Relay] release({tag}) but Auto-On disabled. Skipping OFF.")
+            print(f"[RELY] [{_now_str()}] relay_release({tag}): Sending OFF to hardware")
+            control_usb_relay("OFF")
+            control_usb_relay4(1, False)
 
 
 
@@ -3358,10 +3497,9 @@ def relay_force_off():
     global RELAY_ACTIVE_CNT
 
     with RELAY_ACTIVE_LOCK:
-
         RELAY_ACTIVE_CNT = 0
-
     control_usb_relay("OFF")
+    control_usb_relay4(1, False)
 
 
 
@@ -3537,22 +3675,34 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
             
         # 1. Local Playback Removed - Fully Web-based now
 
-        # 2. Progress Calculation
+        # 2. Progress Calculation  (精準時長偵測)
         if not duration_estimate or duration_estimate <= 0:
             try:
                 if real_path.lower().endswith(".mp3"):
+                    # 方法一：mutagen 精準讀取
                     try:
                         from mutagen.mp3 import MP3
                         duration_estimate = MP3(real_path).info.length
-                    except: duration_estimate = 3.5
+                        print(f"[Speaker] Duration (mutagen): {duration_estimate:.2f}s  ← {os.path.basename(real_path)}")
+                    except Exception as _mu_err:
+                        # 方法二：依檔案大小估算 (128kbps 為 EdgeTTS 標準位元率)
+                        print(f"[Speaker] mutagen 失敗: {_mu_err}  → 改用大小估算")
+                        try:
+                            _sz = os.path.getsize(real_path)
+                            duration_estimate = _sz * 8 / 128000  # 128kbps
+                            print(f"[Speaker] Duration (size {_sz}B @ 128kbps): {duration_estimate:.2f}s  ← {os.path.basename(real_path)}")
+                        except:
+                            duration_estimate = 8.0  # 安全預設值
                 elif real_path.lower().endswith(".wav"):
                     import wave
                     with wave.open(real_path, 'rb') as wf:
                         duration_estimate = wf.getnframes() / float(wf.getframerate())
+                    print(f"[Speaker] Duration (wave): {duration_estimate:.2f}s  ← {os.path.basename(real_path)}")
                 else:
-                    duration_estimate = 2.0
-            except:
-                duration_estimate = 3.0
+                    duration_estimate = 5.0
+            except Exception as _dur_err:
+                print(f"[Speaker] Duration detection error: {_dur_err}")
+                duration_estimate = 8.0
         
         if duration_estimate < 0.5: duration_estimate = 0.5
         
@@ -3565,18 +3715,32 @@ def play_sound(filename, duration_estimate=None, ignore_interrupt=False, wait=Tr
             
         ui_safe(_set_progress, 0); STATE["progress"] = 0
         t = 0
+        interrupted = False
         while t < duration_estimate:
             # Check for interrupt
             if stop_playback_event.is_set() and not ignore_interrupt:
                 stop_web_audio()
+                interrupted = True
                 break
             time.sleep(0.1)
             t += 0.1
             percent = min(100, int(100*t/duration_estimate))
             ui_safe(_set_progress, percent); STATE["progress"] = percent
+        
+        # [KEY FIX] 等待瀏覽器端真正播完 (網路延遲 + 緩衝啟動 + 播放殘留)
+        # 不管音訊長短，瀏覽器從收到指令到播完都需要額外時間
+        if not interrupted:
+            BROWSER_AUDIO_TAIL = 2.5  # 秒：給瀏覽器的額外緩衝時間 (從 1.5 增為 2.5)
+            tail_t = 0
+            while tail_t < BROWSER_AUDIO_TAIL:
+                if stop_playback_event.is_set() and not ignore_interrupt:
+                    break
+                time.sleep(0.1)
+                tail_t += 0.1
             
         ui_safe(_set_progress, 100); STATE["progress"] = 100
-        print(f"[Speaker] 播放完成: {filename}")
+        import datetime as _dt
+        print(f"[Speaker] [{get_now().strftime('%H:%M:%S.%f')[:-3]}] play_sound DONE: {os.path.basename(filename)} (duration={duration_estimate:.1f}s + 1.5s tail)")
     except Exception as e:
         print(f"[RedirAudio] Play error: {e}")
 
@@ -3676,7 +3840,7 @@ def _generate_upload_filename(ext: str, prefix: str = "upload") -> str:
 
     """Return ASCII filename like upload_YYYYMMDD_HHMMSS(_n).ext to avoid unsafe chars."""
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = get_now().strftime("%Y%m%d_%H%M%S")
 
     base = f"{prefix}_{ts}"
 
@@ -4151,13 +4315,17 @@ def auto_unmute_if_needed():
 
 
 
-
-
-@with_relay_playback
 @with_relay_playback
 def taigi_play_wav_with_fx(path):
     """台語合成完成後，套用『直接播放』規格：Relay 開→前導→內容→結束→Relay 關。"""
+    relay_acquired = False
     try:
+        # Precision: Activate Relay only when audio is ready
+        if not relay_acquired:
+            first = relay_acquire("taigi_play_wav_with_fx")
+            relay_acquired = True
+            if first: time.sleep(2.5) # Warmup amp
+
         auto_unmute_if_needed()
         ui_safe(set_playing_status, f" 台語播放：{os.path.basename(path)}")
         # 前導音
@@ -4185,7 +4353,9 @@ def taigi_play_wav_with_fx(path):
              print(f"[Chime] Taigi end error: {e}")
 
         ui_safe(set_playing_status, "✅ 台語播放完成")
-    except Exception as e:
+    finally:
+        if relay_acquired:
+            relay_release("taigi_play_wav_with_fx")
         text_area_insert(f"❌ 台語播放例外：{e}")
 
 def tts_full_play(text, force_chime_off=False): asyncio.run(speak_text_async(text, force_chime_off))
@@ -4539,8 +4709,19 @@ def _piper_run_to_wav(text: str, out_wav: str, lang_code: str = None) -> tuple[b
 
 
 async def speak_text_async(text, force_chime_off=False):
+    # [Precision] Defer relay_acquire until synthesis is ready
+    relay_acquired = False
     try:
         should_chime = CHIME_ENABLED and (not force_chime_off)
+        # 🆕 Debug Chime to UI Area
+        msg = f"[DEBUG] speak_text_async: CHIME={should_chime} (EF={CHIME_ENABLED}), START={os.path.basename(START_SOUND) if START_SOUND else 'None'}, END={os.path.basename(END_SOUND) if END_SOUND else 'None'}"
+        text_area_insert(msg, "TTS")
+        
+        if should_chime:
+            if not (START_SOUND and os.path.exists(START_SOUND)):
+                text_area_insert(f"⚠️ 前導音檔案不存在: {START_SOUND}", "TTS")
+            if not (END_SOUND and os.path.exists(END_SOUND)):
+                text_area_insert(f"⚠️ 結束音檔案不存在: {END_SOUND}", "TTS")
         # Parse Per-Message Metadata: {{L=xx|G=xx}}text
         local_lang = None
         local_gender = None
@@ -4593,98 +4774,6 @@ async def speak_text_async(text, force_chime_off=False):
 
 
 
-        # [NEW] 0. MeloTTS (Priority 1)
-        # 限制 Melo 僅處理中文 (zh-TW, zh-CN, zh)
-        is_zh = (lang and (lang.startswith("zh") or "zh" in lang))
-        
-        will_use_melo = (USE_MELO_TTS and HAS_MELO and melo_model and is_zh)
-
-        if stop_playback_event.is_set() or voice_muted:
-            return
-
-        if USE_MELO_TTS:
-            if not (HAS_MELO and melo_model):
-                 text_area_insert(f"⚠️ 跳過 MeloTTS (Init={HAS_MELO}, Err={MELO_ERR})", "TTS")
-            elif not is_zh:
-                 text_area_insert(f"ℹ️ MeloTTS 僅限中文，目前語系 {lang} 將跳過並使用備援引擎", "TTS")
-        
-        if will_use_melo:
-            try:
-                # 判定角色 
-                melo_speaker_id = 0 # default
-                try:
-                    # Check gender preferences to map to Melo speakers if available?
-                    # Currently Melo ZH usually has one speaker with id 0, or accents
-                    # Let's see if we can find gender specific? 
-                    # If not, just use default.
-                    
-                    spks = melo_model.hps.data.spk2id
-                    # E.g. {'ZH': 0}
-                    if 'ZH' in spks:
-                        melo_speaker_id = spks['ZH']
-                    elif spks:
-                        melo_speaker_id = list(spks.values())[0]
-                except:
-                    pass
-
-                STATE["playing"] = "melo_generating"
-                ui_safe(set_playing_status, f"✨ AI 合成中 (MeloTTS)...")
-                text_area_insert(f"🌬️ MeloTTS 生成中...", "TTS")
-                
-                # Speed Control
-                speed_factor = 1.0
-                try:
-                    val_str = active_rate.replace("%", "").strip()
-                    val = float(val_str)
-                    speed_factor = 1.0 + (val / 100.0)
-                    speed_factor = max(0.5, min(2.0, speed_factor))
-                except: pass
-
-                # Save to wav
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as fp:
-                    wav_path = fp.name
-                
-                # Inference (MeloTTS)
-                # tts_to_file(text, speaker_id, output_path, speed=1.0)
-                melo_model.tts_to_file(text, melo_speaker_id, wav_path, speed=speed_factor)
-                
-                if os.path.exists(wav_path) and os.path.getsize(wav_path) > 0:
-                     ui_safe(set_playing_status, f"🔊 MeloTTS 播放中...")
-                     try:
-                        # Log chime status
-                        print(f"[DEBUG] MeloTTS Chime check: CHIME_ENABLED={CHIME_ENABLED}, should_chime={should_chime}, FILE={START_SOUND}")
-                        if should_chime and START_SOUND and os.path.isfile(START_SOUND):
-                            print(f"[Chime] Playing start (Melo): {START_SOUND}")
-                            # Use wait=False for better UX + short delay
-                            play_sound(START_SOUND, ignore_interrupt=True, wait=False)
-                            await asyncio.sleep(1.0) # Just wait a bit for the chime to "kick in"
-                        else:
-                            print(f"[Chime] Skipping start. should_chime={should_chime}, file_ex={os.path.isfile(START_SOUND) if START_SOUND else 'None'}")
-                     except Exception as ce:
-                        print(f"[Chime] Play error: {ce}")
-                     
-                     play_sound(wav_path)
-                     # [Safety] 延遲刪除
-                     def delayed_cleanup(p):
-                        try:
-                            time.sleep(10)
-                            if os.path.exists(p): os.remove(p)
-                        except: pass
-                     threading.Thread(target=delayed_cleanup, args=(wav_path,), daemon=True).start()
-                     
-                     if not (stop_playback_event.is_set() or voice_muted):
-                        ui_safe(set_playing_status, f"✅ 朗讀完成（MeloTTS）")
-                        try:
-                            if should_chime and os.path.exists(END_SOUND):
-                                play_sound(END_SOUND, ignore_interrupt=True)
-                        except: pass
-                     return
-                else:
-                     text_area_insert("⚠️ MeloTTS 產出空檔案", "TTS")
-
-            except Exception as e:
-                 text_area_insert(f"❌ MeloTTS 失敗: {e}", "TTS")
-                 # Fallthrough to next engine
 
 
         if PIPER_FORCE and _piper_available():
@@ -4832,6 +4921,12 @@ async def speak_text_async(text, force_chime_off=False):
                     if not os.path.exists(mp3_path) or os.path.getsize(mp3_path) == 0:
                         raise RuntimeError("edge-tts returned empty file")
 
+                    # Precision: Activate Relay only when audio is ready
+                    if not relay_acquired:
+                        first = relay_acquire("speak_text_async_edge")
+                        relay_acquired = True
+                        if first: await asyncio.sleep(2.5) # Warmup amp
+
                     if stop_playback_event.is_set() or voice_muted:
                         try: os.remove(mp3_path)
                         except Exception: pass
@@ -4945,6 +5040,11 @@ async def speak_text_async(text, force_chime_off=False):
             gTTS(text, lang=t_lang).save(tmp)
 
             if not (stop_playback_event.is_set() or voice_muted):
+                # Precision: Activate Relay only when audio is ready
+                if not relay_acquired:
+                    first = relay_acquire("speak_text_async_gtts")
+                    relay_acquired = True
+                    if first: await asyncio.sleep(2.5) # Warmup amp
 
                 # [Chime] gTTS
                 if should_chime and START_SOUND and os.path.isfile(START_SOUND):
@@ -5004,6 +5104,12 @@ async def speak_text_async(text, force_chime_off=False):
                     wav_path = fp.name
                 ok, log = _piper_run_to_wav(text, wav_path, lang_code=lang)
                 if ok:
+                    # Precision: Activate Relay only when audio is ready
+                    if not relay_acquired:
+                        first = relay_acquire("speak_text_async_piper")
+                        relay_acquired = True
+                        if first: await asyncio.sleep(2.5) # Warmup amp
+
                     if stop_playback_event.is_set() or voice_muted:
                         try: os.remove(wav_path)
                         except: pass
@@ -5073,6 +5179,11 @@ async def speak_text_async(text, force_chime_off=False):
         ui_safe(set_playing_status, "❌ 朗讀失敗")
 
         ui_safe(_set_progress, 0); STATE["progress"] = 0
+    finally:
+        if relay_acquired:
+            import datetime as _dt
+            print(f"[RELY] [{get_now().strftime('%H:%M:%S.%f')[:-3]}] speak_text_async FINALLY: calling relay_release (relay_acquired={relay_acquired})")
+            relay_release("speak_text_async")
 
 
 
@@ -5280,7 +5391,7 @@ def save_to_csv(message, sender="", relay_status=None, ip=None):
 
         return
 
-    today = datetime.now().strftime("%Y-%m-%d"); filename = os.path.join(DATA_DIR, f"log_{today}.csv")
+    today = get_now().strftime("%Y-%m-%d"); filename = os.path.join(DATA_DIR, f"log_{today}.csv")
 
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -5288,7 +5399,7 @@ def save_to_csv(message, sender="", relay_status=None, ip=None):
 
         csv.writer(f).writerow([
 
-            datetime.now().strftime("%H:%M:%S"), sender, msg, (relay_status or "N/A"), (ip or "")
+            get_now().strftime("%H:%M:%S"), sender, msg, (relay_status or "N/A"), (ip or "")
 
         ])
 
@@ -5536,56 +5647,44 @@ def _load_timetable_from_disk():
     loaded = False
 
     try:
-
         if os.path.isfile(path_json):
-
             with open(path_json, "r", encoding="utf-8") as f:
-
                 raw = json.load(f)
-
             data["enabled"] = bool(raw.get("enabled", True))
-
             data["treat_saturday_as_school"] = bool(raw.get("treat_saturday_as_school", False))
-
             data["skip_holidays"] = bool(raw.get("skip_holidays", True))
-
             data["holidays"] = list(raw.get("holidays", []))
-
             items = raw.get("items", [])
-
             norm_items = []
-
             for it in items:
-
                 it = dict(it)
-
                 if "date" in it:
-
                     norm_items.append({"date": it["date"], "time": it.get("time", "08:00"), "action": it.get("action",""), "label": it.get("label","")})
-
                 else:
-
                     dow = it.get("dow") or it.get("weekday") or it.get("days")
-
                     if isinstance(dow, (list, tuple)):
-
                         for d in dow:
-
                             nd = _norm_dow(d)
-
                             if nd: norm_items.append({"dow": nd, "time": it.get("time","08:00"), "action": it.get("action",""), "label": it.get("label","")})
-
                     else:
-
                         nd = _norm_dow(dow)
-
                         if nd: norm_items.append({"dow": nd, "time": it.get("time","08:00"), "action": it.get("action",""), "label": it.get("label","")})
-
             data["items"] = norm_items
-
             loaded = True
-
-        elif os.path.isfile(path_csv):
+        elif CLOUD_DB:
+            # [NEW] Cloud Restore for Timetable
+            _log_boot("[CLOUD] Timetable local file missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "timetable" in cloud_data:
+                data = cloud_data["timetable"]
+                _log_boot(f"[CLOUD] Restored timetable from cloud ({len(data.get('items',[]))} items)")
+                with open(path_json, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                loaded = True
+            else:
+                _log_boot("[CLOUD] No timetable found in cloud.")
+        
+        if not loaded and os.path.isfile(path_csv):
 
             with open(path_csv, "r", encoding="utf-8") as f:
 
@@ -5627,7 +5726,7 @@ def _load_timetable_from_disk():
 
     except Exception as e:
 
-        text_area_insert(f"❌ 載入課表失敗：{e}")
+        text_area_insert(f"❌ 載入規律任務失敗：{e}")
 
     timetable_data = data
 
@@ -5655,7 +5754,7 @@ def _load_timetable_from_disk():
 
     if 'timetable_status_var' in globals():
 
-        ui_safe(timetable_status_var.set, f" 課表：{'啟用' if timetable_enabled else '停用'}，已載入 {STATE['timetable']['count']} 筆")
+        ui_safe(timetable_status_var.set, f" 規律任務：{'啟用' if timetable_enabled else '停用'}，已載入 {STATE['timetable']['count']} 筆")
 
     if 'timetable_path_var' in globals():
 
@@ -5701,7 +5800,7 @@ def _parse_hhmm_to_minutes(s: str) -> int | None:
 
 def compute_next_ring(now_dt=None):
 
-    if now_dt is None: now_dt = datetime.now()
+    if now_dt is None: now_dt = get_now()
 
     if not timetable_data.get("items"): return None
 
@@ -5773,7 +5872,7 @@ def update_next_label():
 
         if not timetable_enabled:
 
-            ui_safe(timetable_next_var.set, " 下一次：—（自動打鐘關閉）"); return
+            ui_safe(timetable_next_var.set, " 下一次：—（自動播報關閉）"); return
 
         nxt = compute_next_ring()
 
@@ -5795,9 +5894,9 @@ def update_next_label():
 
 
 
-def _now_hhmm() -> str: return datetime.now().strftime("%H:%M")
+def _now_hhmm() -> str: return get_now().strftime("%H:%M")
 
-def _today_str() -> str: return datetime.now().strftime("%Y-%m-%d")
+def _today_str() -> str: return get_now().strftime("%Y-%m-%d")
 
 def _sender_ip_from_addr(addr) -> str | None:
 
@@ -5809,7 +5908,7 @@ def _trigger_action(action: str, label: str = "", src: str = "Timetable", idx: i
 
     sender = f"{src}{'' if idx is None else '#'+str(idx)}"
 
-    text_area_insert(f" 課表觸發（{sender}）：{label or action}")
+    text_area_insert(f" 規律任務觸發（{sender}）：{label or action}")
 
     save_to_csv(f"Schedule:{label or action}", sender)
 
@@ -5819,7 +5918,7 @@ def _trigger_action(action: str, label: str = "", src: str = "Timetable", idx: i
 
     except Exception as e:
 
-        text_area_insert(f"❌ 課表觸發失敗：{e}")
+        text_area_insert(f"❌ 規律任務觸發失敗：{e}")
 
 
 
@@ -5883,7 +5982,7 @@ def timetable_scheduler_loop():
 
         except Exception as e:
 
-            text_area_insert(f"⚠️ 課表排程器錯誤：{e}")
+            text_area_insert(f"⚠️ 規律任務排程器錯誤：{e}")
 
         time.sleep(TIMETABLE_SCAN_SEC)
 
@@ -5901,7 +6000,7 @@ def timetable_play_index(idx: int):
 
             return
 
-    text_area_insert(f"⚠️ 課表索引超出範圍：{idx}")
+    text_area_insert(f"⚠️ 規律任務索引超出範圍：{idx}")
 
 
 
@@ -6042,18 +6141,22 @@ def handle_msg(text, addr):
 
         _load_timetable_from_disk()
 
-        text_area_insert(" 已重新載入課表")
+        text_area_insert(" 已重新載入規律任務")
 
         return
 
 
 
+    if text == "RelayRescan":
+        text_area_insert(f" 重新掃描 USB 繼電器裝置 (by {sender})")
+        threading.Thread(target=auto_detect_lcus_port, daemon=True).start()
+        threading.Thread(target=auto_detect_4relay_port, daemon=True).start()
+        save_to_csv("RelayRescan", sender, ip=sender_ip)
+        return
+
     if text == "ScheduleEnable":
-
         timetable_enabled = True; STATE["timetable"]["enabled"] = True
-
-        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 課表：啟用")
-
+        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 規律任務：啟用")
         return
 
 
@@ -6062,7 +6165,7 @@ def handle_msg(text, addr):
 
         timetable_enabled = False; STATE["timetable"]["enabled"] = False
 
-        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 課表：停用")
+        if 'timetable_status_var' in globals(): ui_safe(timetable_status_var.set, " 規律任務：停用")
 
         return
 
@@ -6788,17 +6891,23 @@ def _load_timetable_from_disk():
     try:
 
         if os.path.exists(TIMETABLE_PATH):
-
             with open(TIMETABLE_PATH, "r", encoding="utf-8") as f:
-
                 timetable_data = json.load(f)
-
-            print(f"[TIMETABLE] Loaded {len(timetable_data.get('items', []))} items")
-
+            print(f"[TIMETABLE] Loaded {len(timetable_data.get('items', []))} items from disk")
+        elif CLOUD_DB:
+            print("[TIMETABLE] Local file missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "timetable" in cloud_data:
+                timetable_data = cloud_data["timetable"]
+                print(f"[TIMETABLE] Restored {len(timetable_data.get('items', []))} items from cloud")
+                # Save restored data locally
+                with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
+                    json.dump(timetable_data, f, ensure_ascii=False, indent=2)
+            else:
+                print("[TIMETABLE] Cloud restore failed or no data, using defaults")
+                timetable_data = {"enabled": True, "items": []}
         else:
-
-            print(f"[TIMETABLE] File does not exist, using defaults")
-
+            print(f"[TIMETABLE] File does not exist and no cloud DB, using defaults")
             timetable_data = {"enabled": True, "items": []}
 
         timetable_enabled = bool(timetable_data.get("enabled", True))
@@ -7157,7 +7266,7 @@ def student_udp_listener():
 
                         "hostname": hostname,
 
-                        "last_seen": datetime.now(),
+                        "last_seen": get_now(),
 
                     }
 
@@ -7327,29 +7436,26 @@ def load_users_config():
     try:
 
         if os.path.exists(USERS_CONFIG_PATH):
-
             with open(USERS_CONFIG_PATH, "r", encoding="utf-8") as f:
-
                 return json.load(f)
-
+        elif CLOUD_DB:
+            print("[AUTH] Local users_config.json missing, trying cloud restore...")
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "users_config" in cloud_data:
+                config = cloud_data["users_config"]
+                print(f"[AUTH] Restored users_config from cloud")
+                save_users_config(config) # Save locally
+                return config
+            else:
+                print("[AUTH] Cloud restore failed, using default config")
+                # (Existing default config logic below...)
+                default_config = {"users": [], "group_passwords": {str(i): "" for i in range(1, 7)}, "session_timeout_minutes": 120, "require_student_login": False}
+                save_users_config(default_config)
+                return default_config
         else:
-
-            # 創建默認配置
-
-            default_config = {
-
-                "users": [],
-
-                "group_passwords": {str(i): "" for i in range(1, 7)},
-
-                "session_timeout_minutes": 120,
-
-                "require_student_login": False
-
-            }
-
+            # (Original default)
+            default_config = {"users": [], "group_passwords": {str(i): "" for i in range(1, 7)}, "session_timeout_minutes": 120, "require_student_login": False}
             save_users_config(default_config)
-
             return default_config
 
     except Exception as e:
@@ -7377,8 +7483,9 @@ def save_users_config(config):
     try:
 
         with open(USERS_CONFIG_PATH, "w", encoding="utf-8") as f:
-
             json.dump(config, f, ensure_ascii=False, indent=4)
+        # Sync to cloud
+        sync_cloud_section("users_config", config)
 
     except Exception as e:
 
@@ -7545,37 +7652,11 @@ def login_required(f):
 
 
 def admin_required(f):
-
-    """要求管理員或教師權限的裝飾器"""
-
+    """要求管理員或教師權限的裝飾器 (示範模式：強行解鎖)"""
     @wraps(f)
-
     def decorated_function(*args, **kwargs):
-
-        if 'user_id' not in session:
-
-            if _is_api_request():
-
-                return jsonify(ok=False, error="未登錄", need_login=True), 401
-
-            return _login_redirect_response()
-
-        
-
-        role = session.get('role', '')
-
-        if role not in ['admin', 'teacher']:
-
-            if _is_api_request():
-
-                return jsonify(ok=False, error="權限不足"), 403
-
-            return "權限不足", 403
-
-        
-
+        # 展示模式：不檢查 session，直接允許存取
         return f(*args, **kwargs)
-
     return decorated_function
 
 
@@ -7597,196 +7678,40 @@ def teacher_or_admin_required(f):
 
 
 @app.route('/login')
-
 def login_page():
-
-    """登錄頁面"""
-
-    next_param = _safe_next_url(request.args.get('next'))
-
-    # 如果已登錄，重定向到首頁
-
-    if 'user_id' in session:
-
-        if next_param:
-
-            return redirect(next_param)
-
-        # 預設一律帶回新版主控台
-
-        return redirect('/static/ui/index.html')
-
-    return send_from_directory(UI_TEMPLATE_DIR, 'login.html')
+    """登錄頁面 (示範模式：直接進入主控台)"""
+    # 展示模式下不顯示登錄頁面，直接跳轉到主控台
+    return redirect('/static/ui/index.html')
 
 
 
 @app.post('/auth/login')
-
-def auth_login():
-
-    """登錄 API"""
-
-    try:
-
-        data = request.get_json(force=True) or {}
-
-        username = data.get('username', '').strip()
-
-        password = data.get('password', '')
-
-        remember = data.get('remember', False)
-
-        next_hint = _safe_next_url(data.get('next'))
-
-        
-
-        if not username or not password:
-
-            return jsonify(ok=False, error="請輸入帳號和密碼"), 400
-
-        
-
-        # 查找用戶
-
-        user = get_user_by_username(username)
-
-        
-
-        if not user:
-
-            return jsonify(ok=False, error="帳號或密碼錯誤"), 401
-
-        
-
-        # 驗證密碼
-
-        password_hash = user.get('password_hash', '')
-
-        if not verify_password(password, password_hash):
-
-            return jsonify(ok=False, error="帳號或密碼錯誤"), 401
-
-        
-
-        # 設置 Session
-
-        session.permanent = remember
-
-        session['user_id'] = user.get('id')
-
-        session['username'] = user.get('username')
-
-        session['role'] = user.get('role', 'user')
-
-        session['display_name'] = user.get('display_name', username)
-
-        
-
-        # 記錄登錄
-
-        try:
-
-            text_area_insert(f"🔐 用戶登錄：{user.get('display_name')} ({username}) [{user.get('role')}]", "Auth")
-
-        except:
-
-            pass
-
-        
-
-        # 根據角色跳轉
-
-        redirect_url = next_hint or '/static/ui/index.html'
-
-        
-
-        return jsonify(
-
-            ok=True,
-
-            user={
-
-                'id': user.get('id'),
-
-                'username': user.get('username'),
-
-                'role': user.get('role'),
-
-                'display_name': user.get('display_name')
-
-            },
-
-            redirect=redirect_url
-
-        )
-
-    
-
-    except Exception as e:
-
-        print(f"[AUTH] Login error: {e}")
-
-        return jsonify(ok=False, error=f"登錄失敗：{str(e)}"), 500
-
-
+def login_api():
+    """媒體/功能 登入 API (示範模式：自動通過)"""
+    session['user_id'] = 'demo_admin'
+    session['username'] = '展示管理員'
+    session['role'] = 'admin'
+    session.permanent = True
+    return jsonify(ok=True, message="展示模式登錄成功", role='admin', username='展示管理員', user_id='demo_admin')
 
 @app.post('/auth/logout')
-
 def auth_logout():
-
-    """登出 API"""
-
-    username = session.get('username', 'Unknown')
-
-    display_name = session.get('display_name', username)
-
+    """登出 API (示範模式：清空但顯示成功)"""
     session.clear()
-
-    
-
-    try:
-
-        text_area_insert(f"🔓 用戶登出：{display_name} ({username})", "Auth")
-
-    except:
-
-        pass
-
-    
-
     return jsonify(ok=True, message="登出成功")
 
-
-
 @app.get('/auth/status')
-
 def auth_status():
-
-    """獲取當前登錄狀態"""
-
-    if 'user_id' in session:
-
-        return jsonify(
-
-            ok=True,
-
-            logged_in=True,
-
-            user={
-
-                'id': session.get('user_id'),
-
-                'username': session.get('username'),
-
-                'role': session.get('role'),
-
-                'display_name': session.get('display_name')
-
-            }
-
-        )
-
-    return jsonify(ok=True, logged_in=False)
+    """檢索當前用戶登錄狀態 (示範模式：永遠在線)"""
+    return jsonify(
+        ok=True,
+        logged_in=True,
+        user={
+            'id': 'demo_admin',
+            'username': '展示管理員',
+            'role': 'admin'
+        }
+    )
 
 
 
@@ -7980,7 +7905,7 @@ def auth_admin_create_user():
 
             "enabled": True,
 
-            "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "created_at": get_now().strftime('%Y-%m-%d %H:%M:%S'),
 
             "created_by": session.get('username')
 
@@ -8100,7 +8025,7 @@ def controller_api_clients():
 
     """獲取學生端清單 API"""
 
-    now = datetime.now()
+    now = get_now()
 
     with students_lock:
 
@@ -8959,14 +8884,12 @@ def _client_ip_from_request():
 
 
 @app.get("/")
-
 def home():
-
-    ui_index = os.path.join(UI_TEMPLATE_DIR, "index.html")
-
-    if os.path.exists(ui_index): return redirect("/static/ui/index.html", code=302)
-
-    return jsonify(ok=False, error="未找到 ./static/ui/index.html"), 404
+    # 首頁重定向到介紹頁面 (示範模式)
+    welcome_page = os.path.join(UI_TEMPLATE_DIR, "welcome.html")
+    if os.path.exists(welcome_page):
+        return redirect("/static/ui/welcome.html", code=302)
+    return redirect("/static/ui/index.html", code=302)
 
 
 
@@ -9483,7 +9406,7 @@ TRIAL_REMAINING = 0
 def _load_trial_info():
     global FIRST_RUN_TIME, TRIAL_EXPIRED, TRIAL_REMAINING
     p = os.path.join(DATA_DIR, "license.json")
-    now = datetime.now()
+    now = get_now()
     try:
         if os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
@@ -9627,79 +9550,65 @@ def _load_cwa_conf():
     global CWA_API_KEY, CWA_ENABLED, CWA_POLL_SEC, CWA_BROADCAST_ENABLED, CWA_LOCAL_CITY, CWA_INTENSITY_THRESHOLD
 
     try:
-
         if os.path.exists(CWA_CONF_FILE):
-
             with open(CWA_CONF_FILE, "r", encoding="utf-8") as f:
-
                 d = json.load(f)
+        elif CLOUD_DB:
+            # [NEW] Cloud Restore for CWA Config
+            cloud_data = CLOUD_DB.pull()
+            if cloud_data and "cwa_config" in cloud_data:
+                d = cloud_data["cwa_config"]
+                _log_boot(f"[CLOUD] Restored cwa_config from cloud")
+                # Save locally for next time
+                with open(CWA_CONF_FILE, "w", encoding="utf-8") as f:
+                    json.dump(d, f, ensure_ascii=False, indent=2)
+            else: d = {}
+        else: d = {}
 
-                k = d.get("key", "").strip()
-
-                if k and len(k) > 30:
-
-                    CWA_API_KEY = k
-
-                if "enabled" in d:
-
-                    CWA_ENABLED = bool(d["enabled"])
-
-                else:
-
-                    CWA_ENABLED = True
-
-                
-
-                CWA_BROADCAST_ENABLED = bool(d.get("broadcast_enabled", True))
-
-                CWA_POLL_SEC = max(15, int(d.get("poll_sec", 60)))
-
-                CWA_LOCAL_CITY = d.get("local_city", "")
-
-                CWA_INTENSITY_THRESHOLD = d.get("intensity_threshold", "3")
-                
-                global CWA_TCP_ACCOUNT, CWA_TCP_PASSWORD
-                CWA_TCP_ACCOUNT = d.get("tcp_account", CWA_TCP_ACCOUNT)
-                CWA_TCP_PASSWORD = d.get("tcp_password", CWA_TCP_PASSWORD)
+        if d:
+            k = d.get("key", "").strip()
+            if k and len(k) > 30:
+                CWA_API_KEY = k
+            if "enabled" in d:
+                CWA_ENABLED = bool(d["enabled"])
+            else:
+                CWA_ENABLED = True
+            
+            CWA_BROADCAST_ENABLED = bool(d.get("broadcast_enabled", True))
+            CWA_POLL_SEC = max(15, int(d.get("poll_sec", 60)))
+            CWA_LOCAL_CITY = d.get("local_city", "")
+            CWA_INTENSITY_THRESHOLD = d.get("intensity_threshold", "3")
+            
+            global CWA_TCP_ACCOUNT, CWA_TCP_PASSWORD
+            CWA_TCP_ACCOUNT = d.get("tcp_account", CWA_TCP_ACCOUNT)
+            CWA_TCP_PASSWORD = d.get("tcp_password", CWA_TCP_PASSWORD)
 
         # After loading config, try loading license override if city or credentials missing
         if not CWA_LOCAL_CITY or not CWA_TCP_ACCOUNT:
             _try_load_cwa_license()
 
-
     except: pass
 
 
 
-def _save_cwa_conf():
-
     with CWA_LOCK:
-
         try:
-
+            data = {
+                "key": CWA_API_KEY, 
+                "enabled": CWA_ENABLED, 
+                "poll_sec": CWA_POLL_SEC, 
+                "broadcast_enabled": CWA_BROADCAST_ENABLED,
+                "local_city": CWA_LOCAL_CITY,
+                "intensity_threshold": CWA_INTENSITY_THRESHOLD,
+                "tcp_account": CWA_TCP_ACCOUNT,
+                "tcp_password": CWA_TCP_PASSWORD
+            }
             with open(CWA_CONF_FILE, "w", encoding="utf-8") as f:
-
-                json.dump({
-
-                    "key": CWA_API_KEY, 
-
-                    "enabled": CWA_ENABLED, 
-
-                    "poll_sec": CWA_POLL_SEC, 
-
-                    "broadcast_enabled": CWA_BROADCAST_ENABLED,
-
-                    "local_city": CWA_LOCAL_CITY,
-
-                    "intensity_threshold": CWA_INTENSITY_THRESHOLD,
-
-                    "tcp_account": CWA_TCP_ACCOUNT,
-
-                    "tcp_password": CWA_TCP_PASSWORD
-
-                }, f)
-
-        except: pass
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # Sync to cloud
+            sync_cloud_section("cwa_config", data)
+        except Exception as e:
+            print(f"Save CWA config error: {e}")
 
 
 
@@ -9918,7 +9827,7 @@ def _cwa_poll_once(silent=False):
 
                 ev_dt = datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S")
 
-                now = datetime.now()
+                now = get_now()
 
                 diff = (now - ev_dt).total_seconds()
 
@@ -10400,7 +10309,20 @@ def relay4_set():
 
             single_port = (RELAY_INFO.get("port") if "RELAY_INFO" in globals() else None) or RELAY_PORT
 
-
+            # ✅ [NEW] 即時 WebSocket 廣播：讓所有開啟 relay4.html 的客戶端即時同步
+            try:
+                import json as _json
+                _clean_state = {str(k): int(v) for k, v in ch_state.items()}
+                _ws_msg = _json.dumps({
+                    "type": "relay4_state",
+                    "ch_state": _clean_state,
+                    "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+                    "last_cmd": RELAY4_INFO.get("last_cmd"),
+                })
+                print(f"[4R-WS] Broadcasting ch_state: {_clean_state}")
+                _broadcast_web(_ws_msg)
+            except Exception as _bcast_err:
+                _diag(f"[4R] WS broadcast error: {_bcast_err}")
 
             return jsonify(
 
@@ -10660,7 +10582,7 @@ def translate_api():
 
 def health():
 
-    return jsonify(ok=True, ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    return jsonify(ok=True, ts=get_now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
 
@@ -10736,32 +10658,37 @@ def setrate():
 
 @app.route("/setlang", methods=["POST"])
 def setlang():
-    lang = request.form.get("lang","zh-TW"); threading.Thread(target=handle_msg, args=(f"SetLang:{lang}", (_client_ip_from_request(), "Web")), daemon=True).start()
+    data = _get_json_tolerant() or {}
+    lang = data.get("lang") or request.form.get("lang", "zh-TW")
+    threading.Thread(target=handle_msg, args=(f"SetLang:{lang}", (_client_ip_from_request(), "Web")), daemon=True).start()
     return ("", 204)
 
 @app.route("/setgender", methods=["POST"])
 def setgender():
-    g = request.form.get("gender","female"); threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
+    data = _get_json_tolerant() or {}
+    g = data.get("gender") or request.form.get("gender", "female")
+    threading.Thread(target=handle_msg, args=(f"SetGender:{g}", (_client_ip_from_request(), "Web")), daemon=True).start()
     return ("", 204)
+
+@app.route("/set_render_url", methods=["POST"])
+def set_render_url():
+    data = _get_json_tolerant() or {}
+    url = data.get("url", "").strip()
+    STATE["render_url"] = url
+    return jsonify(ok=True, url=url)
+
 
 
 
 @app.route("/setvol", methods=["POST"])
-
 def setvol():
-
-    vol = request.form.get("vol","")
-
+    data = _get_json_tolerant() or {}
+    vol = data.get("vol") or request.form.get("vol", "")
     if vol != "":
-
         try: v = int(vol)
-
         except: v = None
-
         if v is not None:
-
             threading.Thread(target=handle_msg, args=(f"SetVolume:{v}", (_client_ip_from_request(), "Web")), daemon=True).start()
-
     return ("", 204)
 
 
@@ -11151,7 +11078,7 @@ def api_logs_download():
 
 def api_logs_list():
 
-    date_s = request.args.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
+    date_s = request.args.get("date", "").strip() or get_now().strftime("%Y-%m-%d")
 
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_s): return jsonify(ok=False, error="bad date"), 400
 
@@ -11240,8 +11167,13 @@ def state():
     out["relay"] = STATE.get("relay", {})
     out["relay_auto_on"] = RELAY_AUTO_ON
 
-    out["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    out["ts"] = get_now().strftime("%Y-%m-%d %H:%M:%S")
+    # 將 Relay4 狀態也加入此通用狀態介面
+    out["relay4"] = STATE.get("relay4") or {
+        "port": RELAY4_INFO.get("port") or RELAY4_PORT or "",
+        "ch_state": RELAY4_INFO.get("ch_state") or {1: 0, 2: 0, 3: 0, 4: 0},
+        "last_cmd": RELAY4_INFO.get("last_cmd")
+    }
     return jsonify(out)
 
 @app.post("/api/relay_config")
@@ -11432,7 +11364,7 @@ def api_timetable_import_holidays():
 
     # 嘗試匯入今年與明年
 
-    target_years = [datetime.now().year, datetime.now().year + 1]
+    target_years = [get_now().year, get_now().year + 1]
 
     fetched_holidays = {} # date -> {week, desc}
 
@@ -11672,16 +11604,11 @@ def api_timetable_enable():
         timetable_enabled = enabled
 
         timetable_data["enabled"] = enabled
-
-
-
         # Save to disk
-
         with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
-
             json.dump(timetable_data, f, ensure_ascii=False, indent=2)
-
-
+        # Sync to cloud
+        sync_cloud_section("timetable", timetable_data)
 
         STATE["timetable"]["enabled"] = enabled
 
@@ -11691,7 +11618,7 @@ def api_timetable_enable():
 
         def _apply_ui():
 
-            status = " 課表：啟用" if enabled else " 課表：停用"
+            status = " 規律任務：啟用" if enabled else " 規律任務：停用"
 
             if 'timetable_status_var' in globals():
 
@@ -11734,15 +11661,14 @@ def api_timetable_set():
     if not ok: return jsonify(ok=False, error=err), 400
 
     with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
-
         json.dump(payload, f, ensure_ascii=False, indent=2)
-
     _load_timetable_from_disk()
+    
+    # Sync to cloud
+    sync_cloud_section("timetable", payload)
 
     try: text_area_insert(f"已覆寫課表：{len(timetable_data.get('items', []))} 筆（enabled={timetable_enabled}）")
-
     except Exception: pass
-
     return jsonify(ok=True, count=len(timetable_data.get("items", [])), enabled=bool(timetable_data.get("enabled", True)))
 
 
@@ -11772,10 +11698,11 @@ def api_timetable_merge():
     if not ok: return jsonify(ok=False, error=err), 400
 
     with open(TIMETABLE_PATH, "w", encoding="utf-8") as f:
-
         json.dump(new, f, ensure_ascii=False, indent=2)
-
     _load_timetable_from_disk()
+
+    # Sync to cloud
+    sync_cloud_section("timetable", new)
 
     return jsonify(ok=True, count=len(timetable_data.get("items", [])), enabled=bool(timetable_data.get("enabled", True)))
 
@@ -11993,7 +11920,7 @@ def schedules_scheduler_loop():
 
             if items:
 
-                now = datetime.now()
+                now = get_now()
 
                 ymd = now.strftime('%Y-%m-%d')
 
@@ -12073,7 +12000,7 @@ def schedules_scheduler_loop():
 
                         handle_msg(payload, 'Schedules')
 
-            prefix = datetime.now().strftime('%Y-%m-%d')
+            prefix = get_now().strftime('%Y-%m-%d')
 
             _schedules_last_fired = {k for k in _schedules_last_fired if prefix in k}
 
@@ -12093,7 +12020,7 @@ def schedules_scheduler_loop():
 
 def _compute_next_schedule_status(items):
 
-    now = datetime.now()
+    now = get_now()
 
     best = None  # (dt, item, idx)
 
@@ -13459,7 +13386,7 @@ except Exception as e:
 
 
 
-root.title("UDP 語音接收端（專業版）")
+root.title("OmniSignal | 專業全域廣播系統")
 
 root.geometry("1024x768")
 
@@ -13639,7 +13566,7 @@ ip_label.pack(side="right", padx=(12,6))
 
 
 
-clock_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+clock_var = tk.StringVar(value=get_now().strftime("%Y-%m-%d %H:%M:%S"))
 
 clock_label = tk.Label(header_right, textvariable=clock_var, fg="#94A3B8", bg=THEME["bg_header"], font=THEME["font_s"])
 
@@ -13649,7 +13576,7 @@ clock_label.pack(side="right", padx=(12, 6))
 
 def _tick_clock():
 
-    try: clock_var.set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    try: clock_var.set(get_now().strftime("%Y-%m-%d %H:%M:%S"))
 
     finally: root.after(1000, _tick_clock)
 
@@ -15295,15 +15222,15 @@ flush_text_buffer_if_any()
 
 # ---- Tab 2:  課表 ----
 
-# ---- Tab 2:  課表 ----
+# ---- Tab 2:  規律任務 ----
 
-tab_tt = tk.Frame(notebook, bg=THEME["bg_root"]); notebook.add(tab_tt, text=" 課表")
+tab_tt = tk.Frame(notebook, bg=THEME["bg_root"]); notebook.add(tab_tt, text=" 規律任務")
 
 tt_top = tk.Frame(tab_tt, bg=THEME["bg_card"], highlightbackground=THEME["border"], highlightthickness=1)
 
 tt_top.pack(fill="x", padx=0, pady=(0, 16))
 
-timetable_status_var = tk.StringVar(value=" 課表：—")
+timetable_status_var = tk.StringVar(value=" 規律任務：—")
 
 tk.Label(tt_top, textvariable=timetable_status_var, font=THEME["font_bold"], bg=THEME["bg_card"]).pack(side="left", padx=(16,10), pady=12)
 
@@ -15861,7 +15788,7 @@ def controller_api_clients_v2():
         # students_clients structure: {id: {ip, port, group, mac, hostname, last_seen}}
         client_list = {}
         online_count = 0
-        now_ts = datetime.now()
+        now_ts = get_now()
         
         with students_lock:
             for cid, info in students_clients.items():
@@ -15953,8 +15880,43 @@ def run_web_server():
         text_area_insert(f"❌ Web 伺服器啟動失敗：{e}", "Web")
 
 # Startup Sequence
+def keep_render_alive():
+    """Background thread to ping self on Render to prevent spin-down."""
+    import requests
+    time.sleep(30) # Wait for server to boot
+    while True:
+        # 1. Try environment variable set by Render
+        url = os.environ.get("RENDER_EXTERNAL_URL")
+        
+        # 2. Try manual config in STATE
+        if not url:
+            url = STATE.get("render_url")
+            
+        if url:
+            try:
+                # Ensure it's a full URL
+                test_url = url if url.startswith("http") else f"https://{url}"
+                # Append /ping to minimize processing
+                ping_url = f"{test_url.rstrip('/')}/ping"
+                
+                print(f"[KeepAlive] Pinging {ping_url}...")
+                requests.get(ping_url, timeout=10)
+            except Exception as e:
+                print(f"[KeepAlive] Ping failed: {e}")
+        else:
+            # If no URL found but we are on Render, try to log it
+            if os.environ.get("RENDER"):
+                print("[KeepAlive] Running on Render but RENDER_EXTERNAL_URL not found. Please set 'render_url' in STATE or environment.")
+        
+        # Ping every 10 minutes (Render timeout is 15m)
+        time.sleep(600)
+
+
+threading.Thread(target=keep_render_alive, daemon=True).start()
+
 try:
     if '_load_timetable_from_disk' in globals(): _load_timetable_from_disk()
+    if '_load_voice_config' in globals(): _load_voice_config()
     def _init_lists_once():
         try:
             if 'refresh_timetable_tree' in globals(): refresh_timetable_tree()
@@ -16070,6 +16032,11 @@ try:
             last_missing_log = 0
             
             while self.running:
+                # 🆕 Skip if disabled
+                if self.port in ("DISABLED", "NONE", "", None):
+                    time.sleep(5)
+                    continue
+
                 try:
                     # Check if port exists first to avoid spamming "FileNotFoundError"
                     params = [p.device for p in list_ports.comports()]
@@ -16145,7 +16112,40 @@ except Exception as e:
     print(f"Startup Error: {e}")
     try:
         with open("startup_error.log", "w", encoding="utf-8") as f:
-            f.write(f"Timestamp: {datetime.now()}\n")
+            f.write(f"Timestamp: {get_now()}\n")
             f.write(err_msg)
     except: pass
     input("Press Enter to exit...")
+
+# =======================================
+# == [Keep-Alive] Render Sleep Prevention ==
+# =======================================
+def keep_alive_pinger():
+    """
+    Prevents Render free tier from sleeping by pinging itself every 10 minutes.
+    """
+    # Prefer RENDER_EXTERNAL_URL from environment, fallback to STATE detection if available
+    url = os.environ.get("RENDER_EXTERNAL_URL") or STATE.get("render_url")
+    
+    if not url:
+        # If no URL is found, we try to construct it or wait
+        time.sleep(30) # Wait a bit for initialization
+        url = os.environ.get("RENDER_EXTERNAL_URL") or STATE.get("render_url")
+
+    if not url:
+        print("⚠️ [Keep-Alive] No RENDER_EXTERNAL_URL found, pinger aborted.")
+        return
+        
+    print(f"🚀 [Keep-Alive] Pinger started for: {url}")
+    while True:
+        try:
+            time.sleep(600)  # Ping every 10 minutes (Render timeout is 15 mins)
+            response = requests.get(url, timeout=15)
+            print(f"✅ [Keep-Alive] Self-ping successful: {response.status_code}")
+        except Exception as e:
+            print(f"⚠️ [Keep-Alive] Self-ping failed: {e}")
+
+# Only start if running on Render
+if os.environ.get('RENDER') or os.environ.get('RENDER_EXTERNAL_URL'):
+    import threading
+    threading.Thread(target=keep_alive_pinger, daemon=True).start()

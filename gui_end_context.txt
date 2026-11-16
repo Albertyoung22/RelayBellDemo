@@ -1,0 +1,25 @@
+﻿            
+            with students_lock:
+                if cid in students_clients:
+                    ip = students_clients[cid].get("ip", ip)
+                    port = students_clients[cid].get("port", port)
+            
+            payload_cmd = f"TARGET={cid}|{real_cmd}"
+            
+            # Use client_id argument to try WS first
+            if send_student_udp_command(ip, port, payload_cmd, real_args, client_id=cid):
+                count += 1
+                
+        return jsonify(ok=True, count=count)
+        
+    except Exception as e:
+        return jsonify(ok=False, error=str(e)), 500
+# [Duplicate Routes Deleted]
+
+def run_web_server():
+    print("\n" + "[*] " + "="*50)
+    print(">>> [SYSTEM] Translation Engine Updated (V2) <<<")
+    print(">>> 蝟餌絞???? (? V1214.01-FINAL) <<<")
+    print(f">>> 蝬脤?隞嚗ttp://localhost:{HTTP_PORT} <<<")
+    print("[*] " + "="*50 + "\n")
+    

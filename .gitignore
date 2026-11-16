@@ -1,0 +1,64 @@
+# Python 虛擬環境
+.venv/
+venv/
+env/
+ENV/
+
+# Python 編譯檔案
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 發布 / 打包檔案
+build/
+dist/
+*.egg-info/
+*.spec
+
+# IDE 設定檔
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 作業系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日誌檔案
+*.log
+
+# 環境變數檔案
+.env
+.env.local
+
+# ⚠️ 敏感資訊 - 絕對不要上傳!
+# API 金鑰設定檔
+cwa_config.json
+
+# 使用者帳號密碼設定檔
+users_config.json
+student_config.json
+
+# 音效設定檔 (可能包含個人化設定)
+sound_config.json
+
+# 私密金鑰檔案
+*.pem
+*.key
+*.p12
+*.pfx
+
+# 暫存檔案
+*.tmp
+*.bak
+
+# 專案數據與錄音 (資料夾)
+UploadedMP3/
+Recoding/
+temp_matcha/
+piper/
+pretrained_models/
+*.exe

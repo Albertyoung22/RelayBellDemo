@@ -1,0 +1,50 @@
+﻿    ttk = _types.ModuleType("ttk")
+    class _W:
+        def __init__(self, *a, **kw): pass
+        def __call__(self, *a, **kw): return _W()
+        def __getattr__(self, n): return _W()
+        def config(self, *a, **kw): pass
+        def configure(self, *a, **kw): pass
+        def grid(self, **kw): pass
+        def pack(self, **kw): pass
+        def place(self, **kw): pass
+        def after(self, *a, **kw): pass
+        def mainloop(self): pass
+        def destroy(self): pass
+        def protocol(self, *a, **kw): pass
+        def title(self, *a): pass
+        def iconphoto(self, *a): pass
+        def wm_iconbitmap(self, *a): pass
+        def geometry(self, *a): pass
+        def resizable(self, *a): pass
+        def quit(self): pass
+        def insert(self, *a, **kw): pass
+        def delete(self, *a, **kw): pass
+        def get(self, *a, **kw): return ""
+        def set(self, *a, **kw): pass
+        def see(self, *a): pass
+        def bind(self, *a, **kw): pass
+        def unbind(self, *a): pass
+        def winfo_width(self): return 0
+        def winfo_height(self): return 0
+        def lift(self): pass
+        def focus_set(self): pass
+        def state(self, *a): return "normal"
+        def tab(self, *a, **kw): pass
+        def add(self, *a, **kw): pass
+        def select(self, *a, **kw): pass
+        def index(self, *a, **kw): return 0
+        def cget(self, *a): return ""
+        def rowconfigure(self, *a, **kw): pass
+        def columnconfigure(self, *a, **kw): pass
+        def winfo_exists(self): return False
+        def getsource(self, *a): return ""
+        def __iter__(self): return iter([])
+        def __len__(self): return 0
+        def __bool__(self): return True
+    for _n in ("Tk","Frame","LabelFrame","Label","Button","Entry","Text",
+               "Checkbutton","OptionMenu","Scale","Scrollbar","Canvas",
+               "Toplevel","Menu","Menubutton","Spinbox","PanedWindow",
+               "PhotoImage","StringVar","IntVar","BooleanVar","DoubleVar",
+               "END","WORD","DISABLED","NORMAL","HORIZONTAL","VERTICAL",
+               "NW","N","NE","W","CENTER","E","SW","S","SE",

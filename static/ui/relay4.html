@@ -228,14 +228,15 @@
 <body>
   <header>
 
-    <div class="title">🔌 4-Relay 控制台 </div>
+    <div class="title">🔌 4-Relay 控制台 <span id="wsDot" title="WebSocket 連線中…"
+        style="font-size:14px;cursor:default;">🟡</span></div>
     <div class="links">
       <span id="nowText"
         style="margin-right:12px;opacity:.9;display:inline-block;min-width:140px;text-align:right">--:--:--</span>
       <a href="index.html">🎛 主控台</a>
       <a href="sched.html">🕐 排程</a>
       <a href="single_reservation.html">📅 預約</a>
-      <a href="tt.html">📚 課表</a>
+      <a href="tt.html">📅 規律任務</a>
       <span class="sep">|</span>
       <a href="taigi_edu.html">🇹🇼 本土語</a>
       <a href="eew.html">🌋 地震</a>
@@ -255,6 +256,7 @@
         <span class="label">指定 COM（僅顯示偵測到的 USB Relay）：</span>
         <select id="portSelect" class="select-port">
           <option value="">自動偵測</option>
+          <option value="DISABLED">🔒 網頁直接控制 (停用後端)</option>
         </select>
         <button class="btn-port" onclick="applyPortSelection()">套用</button>
         <button class="btn-port secondary" onclick="clearPort()">清除指定</button>
@@ -266,6 +268,17 @@
         <span style="font-size:11px;color:#6b7280;">（請避免選到同一顆 COM）</span>
       </div>
       <div id="lastStatus" style="font-size:12px;color:#555;flex-basis:100%;margin-top:4px;">&nbsp;</div>
+
+      <!-- 🆕 Web Serial for Local Control (Cloud Demo Mode Support) -->
+      <div id="webSerialBox"
+        style="margin-top:12px; padding:10px; background:#f0f9ff; border:1px solid #7dd3fc; border-radius:8px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div style="font-size:13px; font-weight:700; color:#0369a1;">🔗 瀏覽器直接控制本機 USB：</div>
+        <button class="btn-port" id="btnConnectSerial" onclick="connectSerial()">🔌 連接本機 USB 繼電器</button>
+        <button class="btn-port warn" id="btnDisconnectSerial" style="display:none; background:#dc2626;"
+          onclick="disconnectSerial()">斷開連線</button>
+        <span id="serialStatus" style="font-size:12px; color:#666;">（狀態：未連接）</span>
+        <div style="font-size:11px; color:#64748b; flex-basis:100%;">提示：即使程式跑在雲端 Render，連上後您仍可在此控制接在您這台電腦上的實體硬體。</div>
+      </div>
     </div>
 
     <div class="cards">
@@ -311,6 +324,54 @@
 
   <script>
     let currentPort = '';
+    let _serialPort = null;
+    let _serialWriter = null;
+
+    // 🆕 Web Serial Logic
+    async function connectSerial() {
+      if (!navigator.serial) {
+        alert("您的瀏覽器不支援 Web Serial API，請使用 Chrome / Edge。");
+        return;
+      }
+      try {
+        _serialPort = await navigator.serial.requestPort();
+        await _serialPort.open({ baudRate: 9600 });
+        _serialWriter = _serialPort.writable.getWriter();
+
+        document.getElementById('serialStatus').textContent = "🟢 已連線";
+        document.getElementById('serialStatus').style.color = "#059669";
+        document.getElementById('btnConnectSerial').style.display = "none";
+        document.getElementById('btnDisconnectSerial').style.display = "inline-block";
+        log("Web Serial: 已成功連線到本機 USB 裝置", false);
+      } catch (e) {
+        log("Web Serial 連線失敗: " + e.message, true);
+      }
+    }
+
+    async function disconnectSerial() {
+      try {
+        if (_serialWriter) { _serialWriter.releaseLock(); _serialWriter = null; }
+        if (_serialPort) { await _serialPort.close(); _serialPort = null; }
+      } catch (e) { }
+      document.getElementById('serialStatus').textContent = "（狀態：未連接）";
+      document.getElementById('serialStatus').style.color = "";
+      document.getElementById('btnConnectSerial').style.display = "inline-block";
+      document.getElementById('btnDisconnectSerial').style.display = "none";
+      log("Web Serial: 已斷開連線", false);
+    }
+
+    async function sendSerialBytes(ch, on) {
+      if (!_serialWriter) return;
+      // Protocol: A0 [CH] [STATUS] [SUM]
+      const bytes = [0xA0, ch, on ? 1 : 0, (0xA0 + ch + (on ? 1 : 0)) & 0xFF];
+      try {
+        await _serialWriter.write(new Uint8Array(bytes));
+        console.log("Web Serial Sent:", bytes);
+      } catch (e) {
+        log("Web Serial 寫入失敗: " + e.message, true);
+        disconnectSerial();
+      }
+    }
 
     function log(msg, isError) {
       const box = document.getElementById('logLines');
@@ -331,6 +392,11 @@
       optAuto.value = '';
       optAuto.textContent = '自動偵測';
       sel.appendChild(optAuto);
+
+      const optDisable = document.createElement('option');
+      optDisable.value = 'DISABLED';
+      optDisable.textContent = '🔒 網頁直接控制 (停用後端)';
+      sel.appendChild(optDisable);
 
       if (!Array.isArray(ports) || ports.length === 0) {
         const optNo = document.createElement('option');
@@ -381,12 +447,16 @@
       if (!v) {
         currentPort = '';
         log('4-Relay COM 改為「自動偵測」模式', false);
+      } else if (v === 'DISABLED') {
+        currentPort = 'DISABLED';
+        log('⚠️ 已停用 4-Relay 後端控制，此時瀏覽器可搶佔序列埠進行直接控制', false);
       } else {
         currentPort = v;
         log('已指定 4-Relay COM：' + v, false);
       }
       fetchStatus();
     }
+
 
     function clearPort() {
       currentPort = '';
@@ -402,45 +472,86 @@
       fetchStatus();
     }
 
+    // 🆕 全域狀態追蹤
+    let g_lastLocalChSync = {};
+
+    function updateChStatus(chState) {
+      if (!chState) return;
+      for (let ch = 1; ch <= 4; ch++) {
+        const el = document.getElementById('ch' + ch + 'Status');
+        if (!el) continue;
+        // 同時檢查數字 1 和字串 "1" (JSON 鍵值永遠是字串)
+        const val = chState[ch] !== undefined ? chState[ch] : chState[String(ch)];
+        const isOn = (val === 1 || val === true || val === "1");
+        el.textContent = isOn ? 'ON' : 'OFF';
+        el.classList.toggle('status-on', isOn);
+        el.classList.toggle('status-off', !isOn);
+      }
+    }
+
+    // ✅ 統一狀態處理 (UI 更新 + 實體同步)
+    function processStateUpdate(data) {
+      if (!data || !data.ch_state) return;
+
+      // 1. 更新 UI 燈號
+      updateChStatus(data.ch_state);
+
+      // 2. 同步到實體 USB 繼電器 (Web Serial)
+      if (_serialWriter) {
+        for (let ch = 1; ch <= 4; ch++) {
+          const val = data.ch_state[ch] !== undefined ? data.ch_state[ch] : data.ch_state[String(ch)];
+          const serverOn = (val === 1 || val === true || val === "1");
+
+          if (g_lastLocalChSync[ch] !== serverOn) {
+            console.log(`[Sync] 實體同步 CH${ch} →`, serverOn);
+            sendSerialBytes(ch, serverOn);
+            g_lastLocalChSync[ch] = serverOn;
+            log(`[同步] 實體 CH${ch} 已設為 ${serverOn ? 'ON' : 'OFF'}`, false);
+          }
+        }
+      }
+
+      // 3. 更新日誌連結
+      if (data.last_cmd) {
+        document.getElementById('lastStatus').textContent = '最新狀態：' + data.last_cmd + (data.port ? ` (${data.port})` : '');
+      }
+    }
+
     async function fetchStatus() {
       try {
         let url = '/relay4/status';
         if (currentPort) url += '?port=' + encodeURIComponent(currentPort);
         const res = await fetch(url);
         const j = await res.json();
-        if (!j.ok) {
-          log('狀態取得失敗：' + (j.error || 'unknown'), true);
-          return;
-        }
-        const mainPort = j.main_port || j.single_port || j.relay_port || j.mainRelayPort || '';
-        document.getElementById('backendPortLabel').textContent = mainPort || '未知';
+        if (!j.ok) return;
 
-        const ports = j.usb_relay_ports || j.available_ports || j.relay4_ports || j.ports || [];
+        // 更新 COM 埠列表與顯示
+        const mainPort = j.main_port || j.single_port || j.relay_port || "";
+        document.getElementById('backendPortLabel').textContent = mainPort || '未知';
+        const ports = j.usb_relay_ports || j.available_ports || [];
         rebuildPortOptions(ports, mainPort);
 
         const usedPort = j.port || '';
         if (currentPort)
-          document.getElementById('portLabel').textContent = '手動指定：' + currentPort + '（實際：' + (usedPort || '未知') + '）';
+          document.getElementById('portLabel').textContent = '指定：' + currentPort + (usedPort ? ` (實:${usedPort})` : '');
         else
-          document.getElementById('portLabel').textContent = usedPort || '(未連線)';
+          document.getElementById('portLabel').textContent = usedPort || '(自動偵測中)';
 
-        const sel = document.getElementById('portSelect');
-        if (currentPort && sel.value !== currentPort) {
-          sel.value = currentPort;
-        }
+        // 執行統一更新
+        processStateUpdate(j);
 
-        updateChStatus(j.ch_state || {});
-        const status = '最後指令：' + (j.last_cmd || '-') + ' · 結果：' + (j.last_result || '-') + (j.last_error ? (' · 錯誤：' + j.last_error) : '');
-        document.getElementById('lastStatus').textContent = status;
       } catch (e) {
-        log('無法取得狀態：' + e, true);
+        // console.error(e);
       }
     }
 
     function updateChStatus(chState) {
+      if (!chState) return;
       for (let ch = 1; ch <= 4; ch++) {
         const el = document.getElementById('ch' + ch + 'Status');
-        const isOn = !!chState[ch];
+        if (!el) continue;
+        // 同時檢查數字 1 和字串 "1"
+        const isOn = (chState[ch] === 1 || chState[ch] === true || chState[String(ch)] === 1 || chState[String(ch)] === true);
         el.textContent = isOn ? 'ON' : 'OFF';
         el.classList.toggle('status-on', isOn);
         el.classList.toggle('status-off', !isOn);
@@ -448,6 +559,8 @@
     }
 
     async function setRelay(ch, on) {
+      // 🆕 Web Serial: 如果本地連線，同時控制本地硬體
+      if (_serialWriter) { sendSerialBytes(ch, on); }
       try {
         const payload = { ch, on };
         if (currentPort) payload.port = currentPort;
@@ -461,23 +574,57 @@
           log('CH' + ch + ' 設定失敗：' + (j.error || 'unknown'), true);
           return;
         }
+        // 更新狀態
         updateChStatus(j.ch_state || {});
-        const usedPort = j.port || '';
-        if (currentPort)
-          document.getElementById('portLabel').textContent = '手動指定：' + currentPort + '（實際：' + (usedPort || '未知') + '）';
-        else
-          document.getElementById('portLabel').textContent = usedPort || '(未連線)';
-
         log('CH' + ch + ' → ' + (on ? 'ON' : 'OFF') + ' 成功', false);
-        const status = '最後指令：' + (j.last_cmd || '-') + ' · 結果：' + (j.last_result || '-') + (j.last_error ? (' · 錯誤：' + j.last_error) : '');
-        document.getElementById('lastStatus').textContent = status;
       } catch (e) {
         log('CH' + ch + ' 設定例外：' + e, true);
       }
     }
 
     fetchStatus();
-    setInterval(fetchStatus, 5000);
+    setInterval(fetchStatus, 1500);  // 縮短輪詢時間 (1.5s) 以對齊 index.html 的靈敏度
+
+    // ✅ WebSocket 即時同步核心
+    let _ws4 = null;
+    let _ws4Retry = 1000;
+
+    function connectWS4() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      _ws4 = new WebSocket(proto + '//' + location.host + '/ws/web');
+
+      _ws4.onopen = () => {
+        _ws4Retry = 1000;
+        const dot = document.getElementById('wsDot');
+        if (dot) { dot.textContent = '🟢'; dot.title = 'WebSocket 已連線 (即時同步)'; }
+        log('WebSocket 已連線', false);
+      };
+
+      _ws4.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'relay4_state' && msg.ch_state) {
+            // ✅ 使用統一的狀態更新函式，確保 UI 和實體硬體同時對齊
+            processStateUpdate(msg);
+            log('[即時] 狀態已由遠端同步', false);
+          }
+        } catch (e) { }
+      };
+
+      _ws4.onerror = () => {
+        const dot = document.getElementById('wsDot');
+        if (dot) { dot.textContent = '🔴'; }
+      };
+
+      _ws4.onclose = () => {
+        const dot = document.getElementById('wsDot');
+        if (dot) { dot.textContent = '🟡'; }
+        setTimeout(connectWS4, _ws4Retry);
+        _ws4Retry = Math.min(_ws4Retry * 1.5, 10000);
+      };
+    }
+    connectWS4();
+
   </script>
   <script>
     (function () {

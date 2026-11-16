@@ -1,0 +1,220 @@
+﻿
+RelayBell_demo.py:9:UDP 隤鮋𨺗?交𤣰蝡荔??急???UI嚚靝??坔�?
+典??蠘�嚚𨅯?蝡舫??Ｙ崕蝡页?銝滚�撱箏銁蝔见?鋆∴?
+RelayBell_demo.py:11:- 靽萘?嚗関kinter 獢屸𢒰 UI?�DP ?交
+𤣰?�TS?�P3/YouTube ?剜𦆮?�??單??柴��䌊?閙?蝔卝��grok嚗�虾?
+賂?
+RelayBell_demo.py:13:- Web ?�?靘?API嚗?translate嚗éi
+ni_translator 瘚�?嚗剹�?send??sendmp3??cmd /state /f
+iles /upload /download /delete /timetable/* /sche
+dules/* /logs* /piper/*
+RelayBell_demo.py:15:- ?批遣 Edge TTS ??Piper嚗�洵鈭屸?
+雿㵪???gTTS ??SAPI5
+RelayBell_demo.py:17:- UI ?�??�瘙�??湛?銝餅綉?啜��?蝔卝��
+?獢?銝𠰴�?�䌊閮�遙??4 ?�?嚗�?閫�蝬剜?嚗?
+RelayBell_demo.py:21: ?啣??�矽?湛?
+RelayBell_demo.py:23:1) 頛詨� YouTube ???敺䕘??唾??�誑?
+�蔣?�?憿?mp3?滢?摮睃銁 UPLOADS嚗�?銝𠰴� MP3 ?諹??坔冗嚗㚁?銝血?閰
+脫??剜𦆮嚗�??滚⏛?歹???
+RelayBell_demo.py:25:2) ?滨垢蝬脣???ngrok URL ??QRCod
+e ?寧�敶�枂?𣬚崕蝡见?閬𣇉??漤＊蝷綽??怨?鋆質??见??厰?嚗剹�?
+RelayBell_demo.py:29:?笔?嚗?
+RelayBell_demo.py:35:憒�?閬�? EXE嚗朞?蝣箔???mp3?�ogo.i
+co?�??舫�嚗总fmpeg.exe ?曉??桅??㚚�誯? PyInstaller datas
+ 撣嗅�??
+RelayBell_demo.py:44:# == [ANCHOR] 雿輻鍂?�虾隤踵㟲?�憛?=
+=
+RelayBell_demo.py:48:USE_NGROK = False           
+# ?喲???ngrok 撠望㺿 False
+RelayBell_demo.py:50:USE_EDGE_TTS = True         
+# ?臬炏雿輻鍂 Edge TTS (??False ?�凒?亥歲?𠬍?雿輻鍂 Piper/gT
+TS)
+RelayBell_demo.py:52:USE_AI_GENERATION = True    
+# ?臬炏?毺鍂 AI 撱?偘蝔輻???(??False ?�??�摰㕑? Ollama)
+RelayBell_demo.py:54:USE_EDGE_TTS = True         
+# ?臬炏雿輻鍂 Edge TTS (??False ?凒?亥歲?𠬍?雿輻鍂 Piper/gTT
+S)
+RelayBell_demo.py:56:USE_AI_GENERATION = True    
+# ?臬炏?毺鍂 AI 撱?偘蝔輻???(??False ???摰㕑? Ollama)
+RelayBell_demo.py:58:TIMETABLE_SCAN_USE_OLLAMA = 
+HAS_OLLAMA     # ?臬炏雿輻鍂 Ollama (擐? HAS_OLLAMA)
+RelayBell_demo.py:63:DISABLE_WEB = False         
+# True ?????? Flask + ngrok嚗??祆?嚗?)
+RelayBell_demo.py:64:DISABLE_UDP = False         
+# True ?????? UDP 隞乩? (?曉??摰? Ollama)/gTTS)
+RelayBell_demo.py:65:FIRE_ALARM_PORT = "COM5"    
+# ??皜?COM ?? (渚?: "COM3")
+RelayBell_demo.py:66:FIRE_ALARM_PIN = "CTS"      
+# ?菜葫?喃?: CTS ??DSR
+RelayBell_demo.py:68:DISABLE_WEB = False         
+# True ???笔? Flask + ngrok嚗??祆?嚗?
+RelayBell_demo.py:74:# ---- ?望�批𥲤?伐??嫣噶 PyInstal
+ler嚗?---
+RelayBell_demo.py:102:# == [ANCHOR] 璅蹱??臬�/?典?撌亙�
+ ==
+RelayBell_demo.py:116:    """?𧼮�?桀??�蝱?埈???(UTC+
+8)"""
+RelayBell_demo.py:120:#  敹恍��?隞?-> ?祆??單??惩?銵?(?湔
+𦻖?剜𦆮,銝滩粥 audio_proxy)
+RelayBell_demo.py:260:            # [CRITICAL] ?游
+?蝳�鍂 SSL 撽𡑒?隞乩耨敺?Frozen App 銝剔? Edge TTS ????誯?
+RelayBell_demo.py:329:# ---- Tkinter嚗𠃑UI ?啣??漤?閬
+?----
+RelayBell_demo.py:330:# Render / Linux ?⊿璅∪?銝?tki
+nter 銝滢?摰𡁜??剁?雿輻鍂 try/except 靽肽風
+RelayBell_demo.py:339:    # --- tkinter Stub嚗朞?敺屸
+𢒰?�芋蝯�惜蝝𡁶?撘讐Ⅳ銝齿? NameError ---
+RelayBell_demo.py:429:    print("[WARN] tkinter n
+ot available ??running in headless / web-only mod
+e")
+RelayBell_demo.py:451:# == [ANCHOR] Tkinter UI嚗? 
+?�?嚗?==
+RelayBell_demo.py:504:    """敺䂿?蝣�??脩垢頛匧�隤鮋𨺗閮剖?"
+""
+RelayBell_demo.py:529:    """靽嘥?隤鮋𨺗閮剖?銝血?甇亙�?脩垢"
+""
+RelayBell_demo.py:543:# ==== [schedules ?脣? JSON 
+閫??撌亙�] ====
+RelayBell_demo.py:547:    """?𠰴虾?賣糓 str ??JSON ?
+�???dict/list嚗𥕦捆敹滩◤摮𦯀葡?硋�甈～�?""
+RelayBell_demo.py:582:    res = {"lat": 25.0330, 
+"lon": 121.5654, "city": "?啣?撣?, "region": "Taipe
+i City"}
+RelayBell_demo.py:590:        loc_r = requests.ge
+t("http://ip-api.com/json/?fields=status,lat,lon,
+city,regionName&lang=zh-CN", timeout=3)
+RelayBell_demo.py:620:        loc_r2 = requests.g
+et("https://ipwho.is/?lang=zh-CN", timeout=5)
+RelayBell_demo.py:660:    loc_name = loc["city"] 
+or loc["region"] or "?啣?撣?
+RelayBell_demo.py:668:        url = f"https://api
+.open-meteo.com/v1/forecast?latitude={lat}&longit
+ude={lon}&current=temperature_2m,relative_humidit
+y_2m,weather_code&timezone=auto"
+RelayBell_demo.py:672:        if r.status_code !=
+ 200: return "?⊥??硋?瘞?情鞈�?"
+RelayBell_demo.py:676:        temp = data.get("te
+mperature_2m", "?")
+RelayBell_demo.py:678:        humid = data.get("r
+elative_humidity_2m", "?")
+RelayBell_demo.py:686:        status = "?湔?"
+RelayBell_demo.py:690:        elif code in (45, 4
+8): status = "?厰𧊅"
+RelayBell_demo.py:692:        elif 51 <= code <= 
+55: status = "瘥𥟇???
+RelayBell_demo.py:694:        elif 56 <= code <= 
+57: status = "?漤𢂚"
+RelayBell_demo.py:698:        elif 66 <= code <= 
+67: status = "?圈𢂚"
+RelayBell_demo.py:702:        elif 80 <= code <= 
+82: status = "??𢂚"
+RelayBell_demo.py:704:        elif 85 <= code <= 
+86: status = "??䪸"
+RelayBell_demo.py:706:        elif code >= 95: st
+atus = "?琿𢂚"
+RelayBell_demo.py:716:            aq_url = f"http
+s://air-quality-api.open-meteo.com/v1/air-quality
+?latitude={lat}&longitude={lon}&current=us_aqi"
+RelayBell_demo.py:728:                    if aqi 
+<= 50: q_status = "?臬末"
+RelayBell_demo.py:730:                    elif aq
+i <= 100: q_status = "?桅�?
+RelayBell_demo.py:732:                    elif aq
+i <= 150: q_status = "撠齿??�?蝢支??亙熒"
+RelayBell_demo.py:734:                    elif aq
+i <= 200: q_status = "銝滚�摨?
+RelayBell_demo.py:736:                    elif aq
+i <= 300: q_status = "?𧼮虜銝滚�摨?
+RelayBell_demo.py:738:                    else: q
+_status = "?勗拿"
+RelayBell_demo.py:740:                    aqi_str
+ = f"嚗𣬚征瘞??鞈泯q_status}嚗淾QI?�彍{aqi}"
+RelayBell_demo.py:748:        now_str = get_now()
+.strftime("%H暺?M??)
+RelayBell_demo.py:750:        return f"?曉銁?�? {no
+w_str}嚗峕??其?蝵?{loc_name}嚗𣬚𤌍?齿除皞?{temp} 摨佗??詨?瞈訫
+漲 {humid}%嚗�予瘞??瘜�?{status}{aqi_str}??
+RelayBell_demo.py:756:        return "瘞?情鞈�?霈�?硋仃
+??
+RelayBell_demo.py:760:# ---- qrcode嚗�𥅾?∪?隞交?蝷箔誨?
+選?----
+RelayBell_demo.py:778:# == [ANCHOR] 頝臬??�??坔冗 ==
+RelayBell_demo.py:1153:        # lang might be 'n
+an', 'nan-TW' -> get_voice_id_auto fallback to zh
+-TW?
+RelayBell_demo.py:1247:        # Note: The studen
+t_agent.py already appends ?autoplay=1 to URLs co
+ntaining '/g/'
+RelayBell_demo.py:1258:        return jsonify(ok=
+False, error="AI ?�??蠘�撌脣???(隢贝秐閮剖??�𢒰?见?)"), 40
+3
+RelayBell_demo.py:1270:        雿删𣶹?冽糓撠�平?�惣?批誨?剔
+頂蝯?AI ?拍???
+RelayBell_demo.py:1271:        隢𧢲覔?帋蝙?刻��?靘𤤿??屸
+??萄??㵪??�?銝�畾萇? 50-100 摮梹?隤墧除閬芸??�迤撘讐??剖𥼚蝔踴�?
+RelayBell_demo.py:1273:        ?鞾?閬�?蝭��?
+RelayBell_demo.py:1274:        1. ?�撓?箝�𣬚??�??滚�
+摰對?蝯訫?蝳�迫雿輻鍂隞颱?銵冽?蝚西? (?𤃬???�arkdown ?澆? (??*蝎烾?
+**)?�???(=) ?硋�隞𣇉鸌畾羓泵?麄�?
+RelayBell_demo.py:1275:        2. ?�??蹱?皞𡝗?暺䂿泵??
+(嚗䎚����?嚗�??䎚�???
+RelayBell_demo.py:1276:        3. ?刻?敹�?皜�苊?𡒊Ⅱ嚗屸
+�?滢蝙?典捆?㯄�䭾??湧𨺗摮𡑒炊霈�?�?敶?(靘见?嚗𡁻�?溻�諹??滨?憭𡁻𨺗摮
+梹??寧鍂?湔?蝣箇?閰???
+RelayBell_demo.py:1277:        4. 隤𧼮蘂閬��𡁻?瘚�噐嚗屸
+�?�??喳???(TTS) ?𡑒???
+RelayBell_demo.py:1278:        5. 隢衤蝙?函?擃𥪯葉?�?銝滩
+?雿輻鍂?望???
+RelayBell_demo.py:1281:        user_input = f"撱?偘
+?𣈯枤摮梹?{keyword}"
+RelayBell_demo.py:1293:                return jso
+nify(ok=False, error="?航炊嚗𡁏𪄳銝滚� AI 璅∪?嚗諹??券𤓖?虫
+??瑁? `ollama pull gemma2:2b` 銝贝?璅∪???), 404
+RelayBell_demo.py:1301:        result_text = re.s
+ub(r"\{\{.*?\}\}", "", result_text) # Strip metad
+ata if AI generated it
+RelayBell_demo.py:1338:        msg = f"??404 Not 
+Found: {method} {url}"
+RelayBell_demo.py:1432:    ?�葦/蝞∠??∪?蝡舐鍂??WebSock
+et嚗𣬚鍂靘�𦻖?園𨺗閮𠰴誨??
+RelayBell_demo.py:1441:            # ?臭誑?閧?銝�鈭𥕦?
+頝單??漤?
+RelayBell_demo.py:1455:    霈枏?蝡臬虾隞乩?頛劐遙雿閗楝敺𤑳??唾?
+瑼䈑??�??唾??澆?嚗?
+RelayBell_demo.py:1460:    # [Robustness] 靽格迤頝臬??
+�?蝚虫蒂?踹?蝯訫?頝臬??餅?
+RelayBell_demo.py:1466:    # 摰𡁶儔?臭??𨅯??�𤌍??
+RelayBell_demo.py:1469:        # ?閙??脣? TAIGI_AUD
+IO_DIR 隞亙?撠𡁏𧊋摰𡁶儔
+RelayBell_demo.py:1476:    # 1. ?閧??𥟇挱?滨韌頧㗇?
+RelayBell_demo.py:1488:        # 2. ?𡑒岫鞈�?頝臬?
+RelayBell_demo.py:1493:            # 3. ?嘥? basen
+ame ?典歇?亦𤌍?�?撠?
+RelayBell_demo.py:1504:                # ?�敺�?閰衣頂
+蝯望麱摮?(隞?basename ?寥?)
+RelayBell_demo.py:1588:        # Kick off existin
+g broadcaster if any? Or reject?
+RelayBell_demo.py:1624:        text_area_insert(f
+"?𣞁 ?湔偘靘�?撌脤�?? ({request.remote_addr})", "Live"
+)
+RelayBell_demo.py:1674:                text_area_
+insert(f"?湔偘?剜𦆮??MPV)?笔? (PID={proc.pid})", "Liv
+e")
+RelayBell_demo.py:1678:                text_area_
+insert(f"??MPV ?笔?憭望?: {e}", "Live")
+RelayBell_demo.py:1720:                 text_area
+_insert(f"?湔偘?剜𦆮??FFplay)?笔? (PID={proc.pid})", 
+"Live")
+RelayBell_demo.py:1724:                 msg = f"?
+剜𦆮?典??訫仃?? {e}"
+RelayBell_demo.py:1728:                 text_area
+_insert(f"??{msg}", "Live")
+RelayBell_demo.py:1732:             msg = "?芣炎皜砍�
+ mpv/ffmpeg/ffplay嚗𣬚�瘜閙偘?曄凒?剝𨺗閮?
+RelayBell_demo.py:1736:             text_area_ins
+ert(f"?𩤃? {msg}", "Live")
+RelayBell_demo.py:1802:                          
+      msg = f"?湔偘?剜𦆮?其葉??(Code: {proc.returncode
+})"
+
+

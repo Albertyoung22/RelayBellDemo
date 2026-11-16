@@ -1,0 +1,42 @@
+[
+  {
+    "name": "123",
+    "mode": "tts",
+    "filename": "",
+    "text": "123",
+    "options": {
+      "start": false,
+      "end": false
+    }
+  },
+  {
+    "name": "aaa",
+    "mode": "mp3",
+    "filename": "upload_20260126_214803.mp3",
+    "text": "",
+    "options": {
+      "start": false,
+      "end": false
+    }
+  },
+  {
+    "name": "qw",
+    "mode": "mp3",
+    "filename": "taigi_1768403719_4bde6501.mp3",
+    "text": "",
+    "options": {
+      "start": false,
+      "end": false
+    }
+  },
+  {
+    "name": "666",
+    "mode": "tts",
+    "filename": "",
+    "text": "6666",
+    "options": {
+      "start": true,
+      "end": false
+    }
+  }
+]

@@ -4,9 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🏢 RelayBell Premium | 商場廣播主控台</title>
+    <title>🏢 OmniSignal Premium | 商場廣播主控台</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Noto+Sans+TC:wght@300;400;700&display=swap');
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
         :root {
             --primary: #4f46e5;
@@ -36,6 +41,7 @@
             margin: 0;
             padding: 20px;
             min-height: 100vh;
+            width: 100%;
             overflow-x: hidden;
             background-attachment: fixed;
         }
@@ -614,6 +620,193 @@
             background-clip: text;
             -webkit-text-fill-color: transparent;
         }
+
+        /* Mobile Responsive Optimizations */
+        @media (max-width: 992px) {
+
+            .col-presets,
+            .col-settings,
+            .col-manual,
+            .col-sched {
+                grid-column: span 12;
+            }
+
+            .manual-area {
+                gap: 30px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            header {
+                flex-direction: column;
+                padding: 20px;
+                gap: 20px;
+                border-radius: 20px;
+                text-align: center;
+                margin-bottom: 20px;
+            }
+
+            .logo-area {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .logo-text h1 {
+                font-size: 1.4rem;
+            }
+
+            .system-status {
+                flex-direction: column;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .status-item {
+                width: 100%;
+                justify-content: center;
+                padding: 10px;
+                font-size: 0.85rem;
+            }
+
+            .grid {
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .card {
+                padding: 18px;
+                border-radius: 24px;
+                width: 100% !important;
+            }
+
+            h2 {
+                font-size: 1.15rem;
+                margin-bottom: 15px;
+            }
+
+            .presets-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .preset-item {
+                padding: 15px;
+                border-radius: 20px;
+            }
+
+            .preset-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .preset-actions {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+
+            .btn-play {
+                padding: 10px 5px;
+                font-size: 0.8rem;
+                border-radius: 12px;
+            }
+
+            .manual-area {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .manual-controls {
+                width: 100%;
+            }
+
+            .btn-broadcast {
+                height: 60px;
+                font-size: 1.1rem;
+                padding: 10px;
+            }
+
+            .time-badge {
+                font-size: 1rem;
+                padding: 6px 12px;
+            }
+
+            textarea {
+                height: 120px;
+            }
+
+            .preview-header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+
+            .preview-header div {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr;
+                width: 100%;
+                gap: 8px;
+            }
+
+            .sched-table-wrap table,
+            .sched-table-wrap tbody,
+            .sched-table-wrap tr,
+            .sched-table-wrap td {
+                display: block;
+                width: 100%;
+            }
+
+            .sched-table-wrap thead {
+                display: none;
+            }
+
+            .sched-table-wrap tr {
+                background: white;
+                margin-bottom: 20px;
+                border-radius: 20px;
+                padding: 15px;
+                position: relative;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            }
+
+            .sched-table-wrap td {
+                padding: 8px 0;
+                text-align: left !important;
+                border: none !important;
+            }
+
+            .sched-table-wrap td:nth-child(2) {
+                border-bottom: 1px solid #f1f5f9 !important;
+                padding-bottom: 12px;
+                margin-bottom: 12px;
+            }
+
+            .modal-content {
+                width: 92%;
+                padding: 20px;
+                margin: 5% auto;
+                border-radius: 25px;
+            }
+
+            #m-days {
+                gap: 8px;
+            }
+
+            #m-days label {
+                padding: 10px;
+                background: #f1f5f9;
+                border-radius: 10px;
+                flex: 1;
+                min-width: 60px;
+                text-align: center;
+                font-size: 0.85rem;
+            }
+        }
     </style>
 </head>
 
@@ -625,7 +818,7 @@
             <div class="logo-area">
                 <div class="logo-icon">🏢</div>
                 <div class="logo-text">
-                    <h1><span class="vibrant-gradient-text">RelayBell</span> Premium</h1>
+                    <h1><span class="vibrant-gradient-text">OmniSignal</span> Premium</h1>
                     <p>Professional Mall Intelligence Console</p>
                 </div>
             </div>

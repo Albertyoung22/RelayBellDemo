@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>🕒 排程 · 接收端</title>
+  <title>🕒 OmniSignal 排程管理</title>
   <style>
     :root {
       --brand: #1e7bd8;
@@ -362,14 +362,14 @@
 
 <body>
   <header>
-    <div class="title">🕒 排程 · 接收端</div>
+    <div class="title">🕒 OmniSignal 排程管理</div>
     <div class="links">
       <span id="nowText"
         style="margin-right:12px;opacity:.9;display:inline-block;min-width:140px;text-align:right">--:--:--</span>
       <a href="index.html">🎛 主控台</a>
       <a href="sched.html">🕐 排程</a>
       <a href="single_reservation.html">📅 預約</a>
-      <a href="tt.html">📚 課表</a>
+      <a href="tt.html">📅 規律任務</a>
       <span class="sep">|</span>
       <a href="taigi_edu.html">🇹🇼 本土語</a>
       <a href="eew.html">🌋 地震</a>
@@ -403,7 +403,7 @@
           <div class="row stretch">
             <div>
               <label class="small">標題</label>
-              <input id="sc-title" type="text" placeholder="例如：第1節上課鈴" />
+              <input id="sc-title" type="text" placeholder="例如：每日清晨廣播" />
             </div>
             <div>
               <label class="small">時間</label>
@@ -966,7 +966,7 @@
             if (!el) return;
             const holStop = (function () { try { return hol_isTodayHoliday(); } catch (e) { return false; } })();
             const ttStop = (function () { try { return !tt_loadEnabled(); } catch (e) { return false; } })();
-            if (ttStop) { el.textContent = '🔔 下一次：—（課表總開關：已停止）'; return; }
+            if (ttStop) { el.textContent = '🔔 下一次：—（規律任務總開關：已停止）'; return; }
             if (holStop) { el.textContent = '🔔 下一次：—（今日國定假日，本機已暫停）'; return; }
             if (j && j.has_next && j.next && j.next.at) {
               el.textContent = '🔔 下一次：' + j.next.at + (j.next.title ? '｜' + j.next.title : '');
