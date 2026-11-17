@@ -3566,9 +3566,11 @@ def _broadcast_web(msg):
 
 def set_playing_status(text):
 
-    ui_safe(playing_label.config, text=text)
+    if 'playing_label' in globals():
+        ui_safe(playing_label.config, text=text)
 
-    ui_safe(progress_text_label.config, text=text)
+    if 'progress_text_label' in globals():
+        ui_safe(progress_text_label.config, text=text)
 
     STATE["playing"] = text
 
@@ -4225,7 +4227,7 @@ def detect_language(text):
 
     # 否則直接回傳使用者選的語言代碼
 
-    selected_label = lang_label_var.get()
+    selected_label = lang_label_var.get() if 'lang_label_var' in globals() else "自動偵測 (Auto)"
 
     selected_code = lang_label2code.get(selected_label, "auto")
 
@@ -4309,7 +4311,9 @@ gender_code2label={code:lab for lab,code in GENDER_LABELS}
 
 def get_voice_id_auto(text, lang_code=None, gender_code=None):
     if not lang_code: lang_code = detect_language(text)
-    if not gender_code: gender_code = gender_label2code.get(gender_label_var.get(), "female")
+    if not gender_code:
+        g_lbl = gender_label_var.get() if 'gender_label_var' in globals() else "女聲"
+        gender_code = gender_label2code.get(g_lbl, "female")
     # Make sure gender_code is lowercase "female" or "male"
     gender_code = gender_code.lower()
     return VOICE_ID_TABLE.get(lang_code, VOICE_ID_TABLE["zh-TW"]).get(gender_code, "zh-TW-HsiaoChenNeural")
@@ -4328,7 +4332,8 @@ def auto_unmute_if_needed():
 
         stop_playback_event.clear()
 
-        ui_safe(status_label.config, text=" 語音啟用中（自動解除靜音）", fg="#188a3a")
+        if 'status_label' in globals():
+            ui_safe(status_label.config, text=" 語音啟用中（自動解除靜音）", fg="#188a3a")
 
         set_playing_status(" 語音啟用中")
 
@@ -13488,6 +13493,35 @@ if not _HAS_TKINTER:
         def wm_iconbitmap(self, *a): pass
         def iconphoto(self, *a): pass
     root = _FakeRoot()
+
+    # 無頭模式下的虛擬 UI 元件/變數占位，避免背景執行緒呼叫 ui_safe(widget.config, ...) 時發生 NameError
+    class _DummyWidget:
+        def config(self, *a, **kw): pass
+        def configure(self, *a, **kw): pass
+        def set(self, *a, **kw): pass
+        def get(self, *a, **kw): return None
+        def winfo_exists(self): return False
+
+    class _DummyVar:
+        def __init__(self, val=""): self._v = val
+        def get(self): return self._v
+        def set(self, val): self._v = val
+
+    status_label = _DummyWidget()
+    playing_label = _DummyWidget()
+    progress_text_label = _DummyWidget()
+    ngrok_status_label = _DummyWidget()
+    rate_scale = _DummyWidget()
+    rate_label = _DummyWidget()
+    volume_scale = _DummyWidget()
+    volume_label = _DummyWidget()
+    progress_var = _DummyVar(0)
+    progress_text_var = _DummyVar("0%")
+    lang_label_var = _DummyVar("自動偵測 (Auto)")
+    gender_label_var = _DummyVar("女聲")
+    timetable_status_var = _DummyVar("")
+    timetable_next_var = _DummyVar("")
+    timetable_path_var = _DummyVar("")
 
     # 啟動所有背景執行緒
     threading.Thread(target=speech_worker, daemon=True).start()
