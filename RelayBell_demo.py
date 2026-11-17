@@ -1221,6 +1221,7 @@ def api_tts_preview():
     try:
         d = request.json or {}
         text = d.get('text')
+        voice = d.get('voice')
         lang = d.get('lang')
         gender = d.get('gender')
         rate_val = d.get('rate', 0)
@@ -1239,7 +1240,8 @@ def api_tts_preview():
         except:
             rate_str = "+0%"
             
-        voice = get_voice_id_auto(text, lang_code=lang, gender_code=gender)
+        if not voice:
+            voice = get_voice_id_auto(text, lang_code=lang, gender_code=gender)
         
         async def _gen(v, r):
             tts = edge_tts.Communicate(text, v, rate=r)
@@ -4288,21 +4290,38 @@ LANG_OPTIONS=[("自動偵測 (Auto)","auto"), ("中文（台灣）","zh-TW"),("�
 lang_label2code={lab:code for lab,code in LANG_OPTIONS}; lang_code2label={code:lab for lab,code in LANG_OPTIONS}
 
 GENDER_LABELS=[
-
-    ("女聲","female"),
-
-    ("男聲","male"),
-
+    ("雲哲 (台灣腔男)", "zh-TW-YunJheNeural"),
+    ("曉臻 (台灣腔女)", "zh-TW-HsiaoChenNeural"),
+    ("雲健 (台灣腔沉穩男)", "zh-TW-YunjianNeural"),
+    ("曉曉 (普通話女)", "zh-CN-XiaoxiaoNeural"),
+    ("雲希 (普通話男)", "zh-CN-YunxiNeural"),
+    ("曉曼 (粵語女)", "zh-HK-HiuMaanNeural"),
+    ("雲龍 (粵語男)", "zh-HK-WanLungNeural"),
+    ("Jenny (標準美音女)", "en-US-JennyNeural"),
+    ("Guy (標準美音男)", "en-US-GuyNeural"),
+    ("Ava (親切美音女)", "en-US-AvaNeural"),
+    ("Andrew (親切美音男)", "en-US-AndrewNeural"),
+    ("Nanami (日語女聲)", "ja-JP-NanamiNeural"),
+    ("Keita (日語男聲)", "ja-JP-KeitaNeural"),
+    ("Sun-Hi (韓語女聲)", "ko-KR-SunHiNeural"),
+    ("InJoon (韓語男聲)", "ko-KR-InJoonNeural"),
+    ("HoaiMy (越南語女)", "vi-VN-HoaiMyNeural"),
+    ("Gadis (印尼語女)", "id-ID-GadisNeural"),
+    ("Premwadee (泰語女)", "th-TH-PremwadeeNeural"),
+    ("專用台語語音", "nan-TW")
 ]
 
 gender_label2code={lab:code for lab,code in GENDER_LABELS}
 
 gender_label2code.update({
-
-    "Female":"female",
-
-    "Male":"male",
-
+    "Female": "female",
+    "Male": "male",
+    "female": "female",
+    "male": "male",
+    "女聲": "female",
+    "男聲": "male",
+    "預設女聲 (Female)": "female",
+    "預設男聲 (Male)": "male",
 })
 
 gender_code2label={code:lab for lab,code in GENDER_LABELS}
@@ -4310,13 +4329,46 @@ gender_code2label={code:lab for lab,code in GENDER_LABELS}
 
 
 def get_voice_id_auto(text, lang_code=None, gender_code=None):
-    if not lang_code: lang_code = detect_language(text)
+    if not lang_code or lang_code == "auto":
+        lang_code = detect_language(text)
+
     if not gender_code:
-        g_lbl = gender_label_var.get() if 'gender_label_var' in globals() else "女聲"
-        gender_code = gender_label2code.get(g_lbl, "female")
-    # Make sure gender_code is lowercase "female" or "male"
-    gender_code = gender_code.lower()
-    return VOICE_ID_TABLE.get(lang_code, VOICE_ID_TABLE["zh-TW"]).get(gender_code, "zh-TW-HsiaoChenNeural")
+        if 'gender_label_var' in globals():
+            val = gender_label_var.get()
+            gender_code = gender_label2code.get(val, "zh-TW-HsiaoChenNeural")
+        else:
+            gender_code = "zh-TW-HsiaoChenNeural"
+
+    # Determine gender (male/female) from gender_code for fallback lookup
+    gender = "female"  # default
+    if gender_code:
+        gender_code_lower = str(gender_code).strip().lower()
+        # 優先比對女聲特徵，嚴防 "male" in "female" 之 Python 子字串誤判
+        if "female" in gender_code_lower or "女" in str(gender_code) or any(f in gender_code_lower for f in ["hsiaochen", "xiaoxiao", "hiumaan", "jenny", "ava", "nanami", "sunhi", "hoaimy", "gadis", "premwadee"]):
+            gender = "female"
+        elif gender_code_lower == "male" or "男" in str(gender_code) or any(m in gender_code_lower for m in ["yunjhe", "yunjian", "yunxi", "wanlung", "guy", "andrew", "keita", "injoon", "namminh", "piseth", "chanthavong", "niwat", "thiha", "osman", "ardi", "angelo"]):
+            gender = "male"
+
+    # If gender_code is already a valid full Edge TTS Neural Voice name, return it directly!
+    if gender_code and "-" in gender_code and "Neural" in gender_code:
+        # Prevent language mismatch if target lang_code is explicitly provided and doesn't match gender_code prefix
+        if lang_code and lang_code != "auto":
+            voice_lang_prefix = gender_code.lower().split("-")[0]
+            target_lang_prefix = lang_code.lower().split("-")[0]
+            if voice_lang_prefix != target_lang_prefix:
+                if lang_code in VOICE_ID_TABLE:
+                    fallback_voice = VOICE_ID_TABLE[lang_code].get(gender)
+                    if fallback_voice:
+                        return fallback_voice
+        return gender_code
+
+    # Otherwise, look up the voice in VOICE_ID_TABLE for the target lang_code and gender
+    if lang_code in VOICE_ID_TABLE:
+        voice = VOICE_ID_TABLE[lang_code].get(gender)
+        if voice:
+            return voice
+
+    return "zh-TW-HsiaoChenNeural"
 
 
 
@@ -14563,11 +14615,11 @@ lang_combo.grid(row=0, column=1, padx=6, pady=16)
 
 tk.Label(setting_panel, text="️ 性別：", font=THEME["font_bold"], bg=THEME["bg_card"]).grid(row=0, column=2, padx=(24,0), pady=16, sticky="w")
 
-gender_label_var = tk.StringVar(value="女聲")
+gender_label_var = tk.StringVar(value="曉臻 (台灣腔女)")
 
 gender_combo = ttk.Combobox(setting_panel, textvariable=gender_label_var,
 
-                            values=[lab for lab,_ in GENDER_LABELS], font=THEME["font_main"], state="readonly", width=7)
+                            values=[lab for lab,_ in GENDER_LABELS], font=THEME["font_main"], state="readonly", width=18)
 
 gender_combo.grid(row=0, column=3, padx=6, pady=16)
 
