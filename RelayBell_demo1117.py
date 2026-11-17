@@ -49,8 +49,6 @@ USE_NGROK = False           # 想關掉 ngrok 就改 False
 
 USE_EDGE_TTS = True         # 是否使用 Edge TTS (若 False 則直接跳過，使用 Piper/gTTS)
 
-USE_AI_GENERATION = True    # 是否啟用 AI 廣播稿生成 (若 False 則不需安裝 Ollama)
-
 HTTP_PORT = 5050            # 改為 5050 以避開舊進程佔用
 
 PORT = 8888                 # UDP 監聽埠
@@ -82,14 +80,6 @@ if _sys.platform == "win32":
         import serial.win32, serial.serialwin32  # noqa: F401
     except ImportError:
         pass
-try:
-    import ollama
-    HAS_OLLAMA = True
-    OLLAMA_ERR = ""
-except ImportError as e:
-    print(f"[WARN] Ollama import failed: {e}")
-    HAS_OLLAMA = False
-    OLLAMA_ERR = str(e)
 
 
 
@@ -1349,69 +1339,8 @@ def group_view(group_id):
 
 @app.route('/api/ai_script', methods=['POST'])
 def api_ai_script():
-    """Call Ollama Gemma 2 (2B) to generate broadcast script."""
-    # Check config first, fallback to global constant if key missing
-    if not config.get("use_ai_generation", USE_AI_GENERATION):
-        return jsonify(ok=False, error="AI 生成功能已停用 (請至設定頁面開啟)"), 403
-
-    if not HAS_OLLAMA:
-        return jsonify(ok=False, error=f"Ollama library not installed. Details: {OLLAMA_ERR}"), 501
-
-    try:
-        data = request.json or request.form
-        keyword = data.get('keyword')
-        if not keyword:
-            return jsonify(ok=False, error="Missing keyword"), 400
-            
-        system_prompt = """
-        你現在是專業的智慧廣播系統 AI 助理。
-        請根據使用者提供的「關鍵字」，生成一段約 50-100 字，語氣親切、正式的播報稿。
-        
-        【重要規範】
-        1. 僅輸出「純文字」內容，絕對禁止使用任何表情符號 (❌😊)、Markdown 格式 (❌**粗體**)、等號 (=) 或其他特殊符號。
-        2. 僅保留標準標點符號 (，。、？！：「」)。
-        3. 用詞必須清晰明確，避免使用容易造成破音字誤讀的詞彙 (例如：避免「行」等多音字，改用更明確的詞)。
-        4. 語句要通順流暢，適合語音合成 (TTS) 朗讀。
-        5. 請使用繁體中文，不要使用英文。
-        """
-        
-        user_input = f"廣播關鍵字：{keyword}"
-        print(f"[AI] Generating script for: {keyword} using Gemma 2 (2B)")
-        
-        # Invoke Ollama
-        try:
-            response = ollama.chat(model='gemma2:2b', messages=[
-                {'role': 'system', 'content': system_prompt},
-                {'role': 'user', 'content': user_input},
-            ])
-        except ollama.ResponseError as e:
-            if e.status_code == 404:
-                print(f"[AI] Model not found: {e}")
-                return jsonify(ok=False, error="錯誤：找不到 AI 模型，請在電腦上執行 `ollama pull gemma2:2b` 下載模型。"), 404
-            raise e
-        
-        result_text = response['message']['content'].strip()
-        
-        # [Safety] Strip potential garbage if AI hallucinated tags
-        import re
-        result_text = re.sub(r"^@\w+[:：]\s*", "", result_text)
-        result_text = re.sub(r"\{\{.*?\}\}", "", result_text) # Strip metadata if AI generated it
-        
-        # [Cleanup] Remove equal signs and other unwanted symbols as requested
-        result_text = result_text.replace("=", "").replace("*", "").replace("#", "")
-        
-        # [Strict Cleanup] Remove Emojis and other non-text symbols
-        # Filter out characters outside of Basic Multilingual Plane (often emojis) and specific symbol ranges
-        # This regex removes supplementary characters (where most emojis live) and some common symbol ranges
-        result_text = re.sub(r'[\U00010000-\U0010ffff]', '', result_text) 
-        # Also remove specific miscellaneous symbols if any remain
-        result_text = re.sub(r'[\u2600-\u27BF\u2300-\u23FF]', '', result_text)
-
-        return jsonify(ok=True, script=result_text)
-        
-    except Exception as e:
-        print(f"[AI] Generation failed: {e}")
-        return jsonify(ok=False, error=str(e)), 500
+    """Ollama 模組已移除。"""
+    return jsonify(ok=False, error="Ollama AI 廣播稿生成模組已移除。"), 410
 
 @app.route('/api/get_timetable_status')
 def api_get_timetable_status():
@@ -2626,7 +2555,7 @@ _sender_ctx = threading.local()
 
 CONFIG_FILE = "sound_config.json"
 
-DEFAULT_CONFIG = {"start_sound":"static/audio/beforemic.mp3","end_sound":"static/audio/beforemic2.mp3","mute_sound":"static/audio/mute.mp3", "use_ai_generation": True}
+DEFAULT_CONFIG = {"start_sound":"static/audio/beforemic.mp3","end_sound":"static/audio/beforemic2.mp3","mute_sound":"static/audio/mute.mp3"}
 
 
 
@@ -15982,23 +15911,7 @@ settings_frame = tk.Frame(tab_settings, bg=THEME["bg_card"], highlightbackground
 settings_frame.pack(fill="x", padx=16, pady=16)
 
 tk.Label(settings_frame, text="系統設定", font=THEME["font_bold"], bg=THEME["bg_card"]).pack(anchor="w", padx=16, pady=(12, 6))
-
-# AI Generation Toggle
-ai_gen_var = tk.BooleanVar(value=config.get("use_ai_generation", True))
-
-def _on_ai_gen_change(*args):
-    config["use_ai_generation"] = ai_gen_var.get()
-    save_config(config)
-    # Update global fallback if needed
-    global USE_AI_GENERATION
-    USE_AI_GENERATION = ai_gen_var.get()
-
-ai_gen_var.trace_add("write", _on_ai_gen_change)
-
-chk_ai = tk.Checkbutton(settings_frame, text="啟用 AI 廣播稿生成 (需安裝 Ollama)", variable=ai_gen_var, bg=THEME["bg_card"], font=THEME["font_main"])
-chk_ai.pack(anchor="w", padx=16, pady=(0, 12))
-
-tk.Label(settings_frame, text="說明：若停用此功能，將不需安裝 Ollama 模型，適合低配置電腦使用。", font=THEME["font_s"], fg=THEME["fg_sub"], bg=THEME["bg_card"]).pack(anchor="w", padx=36, pady=(0, 16))
+tk.Label(settings_frame, text="目前無需額外本地 AI 設定。", font=THEME["font_s"], fg=THEME["fg_sub"], bg=THEME["bg_card"]).pack(anchor="w", padx=16, pady=(0, 16))
 
 
 
