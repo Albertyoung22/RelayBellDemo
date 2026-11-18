@@ -2051,7 +2051,9 @@
           // Taigi Special Handling (Server-side generated audio)
           if (lang === "nan" || lang === "nan-TW") {
             try {
-              const g = ($("#gender")?.value === "male") ? "m" : "f";
+              const rawG = ($("#gender")?.value || "").toLowerCase();
+              const isMale = (rawG === "male" || ["yunjhe", "yunjian", "yunxi", "wanlung", "guy", "andrew", "keita", "injoon"].some(k => rawG.includes(k)));
+              const g = isMale ? "m" : "f";
               const j = await this.postJSON("/taigi/say", { text: text, gender: g, direction: "raw", play: false, speed: 1.0 });
               const url = j.url || (j.file ? ("/taigi/audio/" + encodeURIComponent(j.file)) : "");
               if (url) {
@@ -2073,7 +2075,7 @@
           // [NEW] Edge TTS Server-Side Preview
           try {
             // 1. Get parameters
-            const gVal = ($("#gender")?.value === "male") ? "male" : "female";
+            const gVal = $("#gender")?.value || "female";
             const rVal = $("#rate") ? parseInt($("#rate").value || "0") : 0;
 
             const langMap = {
@@ -2083,11 +2085,15 @@
             };
             const backendLang = langMap[lang] || lang;
 
-            // 2. Request audio blob
+            // 2. Request audio blob (pass explicit voice when a Neural voice ID is selected)
+            const payload = { text: text, lang: backendLang, gender: gVal, rate: rVal };
+            if (gVal.includes("-") && gVal.includes("Neural")) {
+              payload.voice = gVal;
+            }
             const res = await fetch("/api/tts_preview", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text: text, lang: backendLang, gender: gVal, rate: rVal })
+              body: JSON.stringify(payload)
             });
 
             if (!res.ok) {
