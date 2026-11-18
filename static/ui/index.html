@@ -747,13 +747,66 @@
                 <div class="right-col">
                   <div class="card">
                     <h3>🗣️ 語音設定</h3>
-                    <input type="hidden" id="lang" value="zh-TW" />
                     <div class="row">
                       <div class="select-inline">
-                        <label class="small">聲別</label>
+                        <label class="small">語言 <span id="langAutoHint" style="font-size:10px;color:#64748b;">（自動或指定）</span></label>
+                        <select id="lang">
+                          <option value="auto">🤖 自動辨識 (Auto)</option>
+                          <option value="zh-TW">🇹🇼 中文（台灣）</option>
+                          <option value="en-US">🇺🇸 英文（美國）</option>
+                          <option value="ja-JP">🇯🇵 日文（日本）</option>
+                          <option value="ko-KR">🇰🇷 韓文（韓國）</option>
+                          <option value="vi-VN">🇻🇳 越南語</option>
+                          <option value="id-ID">🇮🇩 印尼語</option>
+                          <option value="th-TH">🇹🇭 泰國</option>
+                          <option value="nan-TW">🇹🇼 台語</option>
+                        </select>
+                        <button id="btn-lang" style="display:none"></button>
+                      </div>
+                    </div>
+                    <div class="row">
+                      <div class="select-inline">
+                        <label class="small">聲別 / 發音人</label>
                         <select id="gender">
-                          <option value="female">女聲</option>
-                          <option value="male">男聲</option>
+                          <optgroup label="🤖 自動模式聲別" data-lang="auto">
+                            <option value="female">預設女聲 (Female)</option>
+                            <option value="male">預設男聲 (Male - 權威)</option>
+                          </optgroup>
+                          <optgroup label="🇹🇼 中文（台灣腔）" data-lang="zh-TW">
+                            <option value="zh-TW-YunJheNeural">雲哲 (台灣男聲 - 嚴厲/權威警告 😡)</option>
+                            <option value="zh-TW-YunjianNeural">雲健 (台灣男聲 - 沉穩/嚴肅懲戒 ⚖️)</option>
+                            <option value="zh-TW-HsiaoChenNeural">曉臻 (台灣女聲 - 溫和標準 🌸)</option>
+                          </optgroup>
+                          <optgroup label="🇨🇳 中文（普通話）" data-lang="zh-TW">
+                            <option value="zh-CN-XiaoxiaoNeural">曉曉 (普通話女 - 告誡/嚴肅)</option>
+                            <option value="zh-CN-YunxiNeural">雲希 (普通話男 - 嚴肅/威嚴)</option>
+                          </optgroup>
+                          <optgroup label="🇭🇰 中文（粵語/廣東話）" data-lang="zh-TW">
+                            <option value="zh-HK-HiuMaanNeural">曉曼 (粵語女)</option>
+                            <option value="zh-HK-WanLungNeural">雲龍 (粵語男)</option>
+                          </optgroup>
+                          <optgroup label="🇺🇸 英文 (美音)" data-lang="en-US">
+                            <option value="en-US-JennyNeural">Jenny (標準美音女)</option>
+                            <option value="en-US-GuyNeural">Guy (標準美音男)</option>
+                            <option value="en-US-AvaNeural">Ava (親切美音女)</option>
+                            <option value="en-US-AndrewNeural">Andrew (親切美音男)</option>
+                          </optgroup>
+                          <optgroup label="🇯🇵 日文" data-lang="ja-JP">
+                            <option value="ja-JP-NanamiNeural">Nanami (日語女聲)</option>
+                            <option value="ja-JP-KeitaNeural">Keita (日語男聲)</option>
+                          </optgroup>
+                          <optgroup label="🇰🇷 韓文" data-lang="ko-KR">
+                            <option value="ko-KR-SunHiNeural">Sun-Hi (韓語女聲)</option>
+                            <option value="ko-KR-InJoonNeural">InJoon (韓語男聲)</option>
+                          </optgroup>
+                          <optgroup label="🌏 東南亞語種" data-lang="vi-VN,id-ID,th-TH">
+                            <option value="vi-VN-HoaiMyNeural">HoaiMy (越南語女)</option>
+                            <option value="id-ID-GadisNeural">Gadis (印尼語女)</option>
+                            <option value="th-TH-PremwadeeNeural">Premwadee (泰語女)</option>
+                          </optgroup>
+                          <optgroup label="🇹🇼 台語" data-lang="nan-TW">
+                            <option value="nan-TW">專用台語語音</option>
+                          </optgroup>
                         </select>
                         <button id="btn-gender" style="display:none"></button>
                       </div>
@@ -1251,10 +1304,70 @@
             });
           });
 
+          const voiceToLangMap = {
+            "female": "auto",
+            "male": "auto",
+            "zh-TW-YunJheNeural": "zh-TW",
+            "zh-TW-HsiaoChenNeural": "zh-TW",
+            "zh-TW-YunjianNeural": "zh-TW",
+            "zh-CN-XiaoxiaoNeural": "zh-TW",
+            "zh-CN-YunxiNeural": "zh-TW",
+            "zh-HK-HiuMaanNeural": "zh-TW",
+            "zh-HK-WanLungNeural": "zh-TW",
+            "en-US-JennyNeural": "en-US",
+            "en-US-GuyNeural": "en-US",
+            "en-US-AvaNeural": "en-US",
+            "en-US-AndrewNeural": "en-US",
+            "ja-JP-NanamiNeural": "ja-JP",
+            "ja-JP-KeitaNeural": "ja-JP",
+            "ko-KR-SunHiNeural": "ko-KR",
+            "ko-KR-InJoonNeural": "ko-KR",
+            "vi-VN-HoaiMyNeural": "vi-VN",
+            "id-ID-GadisNeural": "id-ID",
+            "th-TH-PremwadeeNeural": "th-TH",
+            "nan-TW": "nan-TW"
+          };
+          const defaultVoiceByLang = {
+            "auto": "female",
+            "zh-TW": "zh-TW-HsiaoChenNeural",
+            "en-US": "en-US-JennyNeural",
+            "ja-JP": "ja-JP-NanamiNeural",
+            "ko-KR": "ko-KR-SunHiNeural",
+            "vi-VN": "vi-VN-HoaiMyNeural",
+            "id-ID": "id-ID-GadisNeural",
+            "th-TH": "th-TH-PremwadeeNeural",
+            "nan-TW": "nan-TW"
+          };
+          const updateVoiceLinkage = (triggerSource) => {
+            const langSel = $("#lang");
+            const genderSel = $("#gender");
+            if (!langSel || !genderSel) return;
+            if (triggerSource === "gender") {
+              const mappedLang = voiceToLangMap[genderSel.value];
+              if (mappedLang && langSel.value !== mappedLang) {
+                langSel.value = mappedLang;
+              }
+            }
+            const currentLang = langSel.value || "auto";
+            Array.from(genderSel.querySelectorAll("optgroup")).forEach(og => {
+              const ogLangs = (og.getAttribute("data-lang") || "").split(",");
+              const opts = Array.from(og.querySelectorAll("option"));
+              const show = (currentLang === "auto") || ogLangs.includes(currentLang) || ogLangs.includes("auto");
+              og.style.display = show ? "" : "none";
+              opts.forEach(opt => opt.disabled = !show);
+            });
+            const activeOpt = genderSel.selectedOptions && genderSel.selectedOptions[0];
+            if (!activeOpt || activeOpt.disabled || (activeOpt.parentElement && activeOpt.parentElement.style.display === "none")) {
+              genderSel.value = defaultVoiceByLang[currentLang] || "zh-TW-HsiaoChenNeural";
+            }
+          };
+
           _safeBind("#lang", "change", () => {
+            updateVoiceLinkage("lang");
             this.postForm("/setlang", { lang: $("#lang").value });
           });
           _safeBind("#gender", "change", () => {
+            updateVoiceLinkage("gender");
             this.postForm("/setgender", { gender: $("#gender").value });
           });
 
