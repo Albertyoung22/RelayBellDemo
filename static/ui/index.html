@@ -1347,27 +1347,25 @@
               if (mappedLang && langSel.value !== mappedLang) {
                 langSel.value = mappedLang;
               }
-            }
-            const currentLang = langSel.value || "auto";
-            Array.from(genderSel.querySelectorAll("optgroup")).forEach(og => {
-              const ogLangs = (og.getAttribute("data-lang") || "").split(",");
-              const opts = Array.from(og.querySelectorAll("option"));
-              const show = (currentLang === "auto") || ogLangs.includes(currentLang) || ogLangs.includes("auto");
-              og.style.display = show ? "" : "none";
-              opts.forEach(opt => opt.disabled = !show);
-            });
-            const activeOpt = genderSel.selectedOptions && genderSel.selectedOptions[0];
-            if (!activeOpt || activeOpt.disabled || (activeOpt.parentElement && activeOpt.parentElement.style.display === "none")) {
-              genderSel.value = defaultVoiceByLang[currentLang] || "zh-TW-HsiaoChenNeural";
+            } else if (triggerSource === "lang") {
+              const currentLang = langSel.value || "auto";
+              const targetVoice = defaultVoiceByLang[currentLang];
+              if (targetVoice) {
+                genderSel.value = targetVoice;
+              }
             }
           };
 
           _safeBind("#lang", "change", () => {
+            this._lastLangSet = Date.now();
             updateVoiceLinkage("lang");
             this.postForm("/setlang", { lang: $("#lang").value });
+            this.postForm("/setgender", { gender: $("#gender").value });
           });
           _safeBind("#gender", "change", () => {
+            this._lastGenderSet = Date.now();
             updateVoiceLinkage("gender");
+            this.postForm("/setlang", { lang: $("#lang").value });
             this.postForm("/setgender", { gender: $("#gender").value });
           });
 

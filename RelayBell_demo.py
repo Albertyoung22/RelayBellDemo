@@ -6741,17 +6741,25 @@ def handle_msg(text, addr):
     if text.startswith("SetLang:"):
         lang = text[8:].strip()
         if lang in lang_code2label:
-            ui_safe(lang_label_var.set, lang_code2label[lang]); update_voice(); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
+            voice_language = lang
+            STATE["lang"] = lang
+            ui_safe(lang_label_var.set, lang_code2label[lang]); ui_safe(update_voice); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
         elif lang in [lab for lab, _ in LANG_OPTIONS]:
-            ui_safe(lang_label_var.set, lang); update_voice(); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
+            voice_language = lang_label2code.get(lang, "zh-TW")
+            STATE["lang"] = voice_language
+            ui_safe(lang_label_var.set, lang); ui_safe(update_voice); save_to_csv(f"SetLang:{lang}", sender, ip=sender_ip)
         return
 
     if text.startswith("SetGender:"):
         g = text[10:].strip()
         if g in gender_code2label:
-            ui_safe(gender_label_var.set, gender_code2label[g]); update_voice(); save_to_csv(f"SetGender:{g}", sender, ip=sender_ip)
+            voice_gender = g
+            STATE["gender"] = g
+            ui_safe(gender_label_var.set, gender_code2label[g]); ui_safe(update_voice); save_to_csv(f"SetGender:{g}", sender, ip=sender_ip)
         elif g in gender_label2code:
-            ui_safe(gender_label_var.set, g); update_voice(); save_to_csv(f"SetGender:{g}", sender, ip=sender_ip)
+            voice_gender = gender_label2code[g]
+            STATE["gender"] = voice_gender
+            ui_safe(gender_label_var.set, g); ui_safe(update_voice); save_to_csv(f"SetGender:{g}", sender, ip=sender_ip)
         return
 
     if text.startswith("SetMeloSpeaker:"):
